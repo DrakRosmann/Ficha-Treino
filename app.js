@@ -86,7 +86,7 @@ const I = {
 /* ================= Estado ================= */
 function blank() {
   return {
-    v: 1, settings: { rest: 90, sound: true, theme: 'auto', accent: 'limao', glass: true },
+    v: 1, settings: { rest: 90, sound: true, theme: 'auto', accent: 'limao', glass: true, keepAwake: true, lockTimer: false },
     custom: [], programs: [], routines: [], sessions: [], active: null, videos: {}, profile: null, body: [], bodyGoal: {}
   };
 }
@@ -437,6 +437,8 @@ function route() {
 }
 function go(hash) { if (location.hash === hash) route(); else location.hash = hash; }
 function render() {
+  if (!S.active || !S.active.rest) { if (restAudioUrl) lockRestStop(); }
+  syncWakeLock();
   const html = current();
   if (html == null) return; // a view redirecionou
   $('#view').innerHTML = html;
@@ -945,6 +947,102 @@ function startRest(sec) {
   if (!S.active || !sec) return;
   S.active.rest = { end: Date.now() + sec * 1000, total: sec };
   save();
+  lockRestStart();
+}
+
+/* ================= Tela ligada e descanso na tela bloqueada ================= */
+// Mantém a tela acesa durante o treino (Screen Wake Lock), para o cronômetro não parar.
+let wakeLock = null;
+function syncWakeLock() {
+  const want = S.settings.keepAwake && S.active && !document.hidden;
+  if (want && !wakeLock && 'wakeLock' in navigator) {
+    wakeLock = 'pedindo';
+    navigator.wakeLock.request('screen')
+      .then(l => {
+        wakeLock = l;
+        l.addEventListener('release', () => { if (wakeLock === l) wakeLock = null; });
+        if (!(S.settings.keepAwake && S.active && !document.hidden)) syncWakeLock(); // mudou enquanto pedia
+      })
+      .catch(() => { wakeLock = null; });
+  } else if (!want && wakeLock && wakeLock !== 'pedindo') {
+    wakeLock.release().catch(() => {}); wakeLock = null;
+  }
+}
+
+// Web apps no iPhone não têm Live Activities (exclusivas de apps nativos). O que existe é o
+// "Tocando agora": um áudio silencioso com o alarme no fim faz o iPhone mostrar o descanso na
+// tela bloqueada e na Dynamic Island, e o alarme toca mesmo com o celular bloqueado.
+// Contrapartida: o iPhone pausa a música de outros apps enquanto o áudio toca.
+const ALARM_SECS = 1.7;
+let restAudio = null, restAudioUrl = null;
+function restWav(seconds, withAlarm) {
+  const rate = 8000, n = Math.round((seconds + ALARM_SECS) * rate);
+  const buf = new Uint8Array(44 + n), v = new DataView(buf.buffer);
+  const str = (o, t) => { for (let i = 0; i < t.length; i++) buf[o + i] = t.charCodeAt(i); };
+  // Cabeçalho WAV: PCM 8 bits, mono, 8 kHz
+  str(0, 'RIFF'); v.setUint32(4, 36 + n, true); str(8, 'WAVE'); str(12, 'fmt ');
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, rate, true); v.setUint32(28, rate, true); v.setUint16(32, 1, true); v.setUint16(34, 8, true);
+  str(36, 'data'); v.setUint32(40, n, true);
+  buf.fill(128, 44); // silêncio
+  if (withAlarm) {
+    const start = Math.round(seconds * rate), len = Math.round(0.18 * rate);
+    [0, 0.22, 0.44, 1, 1.22, 1.44].forEach((d, i) => {
+      const f = i % 3 === 2 ? 1320 : 880, s0 = start + Math.round(d * rate);
+      for (let k = 0; k < len && s0 + k < n; k++) {
+        const env = Math.min(1, k / 60, (len - k) / 60);
+        buf[44 + s0 + k] = 128 + Math.round(100 * env * Math.sin(2 * Math.PI * f * k / rate));
+      }
+    });
+  }
+  return new Blob([buf], { type: 'audio/wav' });
+}
+function nextSetLabel() {
+  const a = S.active;
+  for (const ex of (a ? a.exercises : [])) {
+    const i = ex.sets.findIndex(x => !x.done);
+    if (i >= 0) return `Próximo: ${ex.name} · ${ex.sets[i].warm ? 'aquecimento' : `série ${ex.sets.slice(0, i + 1).filter(x => !x.warm).length}`}`;
+  }
+  return 'Última série feita';
+}
+function lockRestPlaying() { return !!(restAudio && restAudioUrl && !restAudio.paused && !restAudio.ended); }
+function lockRestStart() {
+  const a = S.active;
+  if (!S.settings.lockTimer || !a || !a.rest) return;
+  const left = (a.rest.end - Date.now()) / 1000;
+  if (left <= 0.5) { lockRestStop(); return; }
+  lockRestStop();
+  if (!restAudio) {
+    restAudio = new Audio();
+    restAudio.addEventListener('ended', () => lockRestStop());
+  }
+  restAudioUrl = URL.createObjectURL(restWav(left, S.settings.sound));
+  restAudio.src = restAudioUrl;
+  const p = restAudio.play();
+  if (p && p.catch) p.catch(() => {});
+  if ('mediaSession' in navigator) {
+    const ms = navigator.mediaSession;
+    try {
+      ms.metadata = new MediaMetadata({
+        title: `Descanso · ${clock(a.rest.total)}`, artist: nextSetLabel(), album: a.name,
+        artwork: [{ src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png' }]
+      });
+      ms.playbackState = 'playing';
+      ms.setPositionState({ duration: left + ALARM_SECS, playbackRate: 1, position: 0 });
+    } catch (e) { /* navegador sem suporte completo */ }
+    const set = (action, fn) => { try { ms.setActionHandler(action, fn); } catch (e) { /* ação não suportada */ } };
+    set('pause', () => ACT.restSkip());
+    set('nexttrack', () => ACT.restSkip());
+    set('seekforward', () => ACT.restAdd({ dataset: { d: 15 } }));
+    set('seekbackward', () => ACT.restAdd({ dataset: { d: -15 } }));
+  }
+}
+function lockRestStop() {
+  if (restAudio) { restAudio.pause(); restAudio.removeAttribute('src'); restAudio.load(); }
+  if (restAudioUrl) { URL.revokeObjectURL(restAudioUrl); restAudioUrl = null; }
+  if ('mediaSession' in navigator) {
+    try { navigator.mediaSession.metadata = null; navigator.mediaSession.playbackState = 'none'; } catch (e) { /* ignora */ }
+  }
 }
 
 function finishWorkout() {
@@ -1124,8 +1222,12 @@ function viewAjustes() {
     <div class="list">
       <label class="row"><div class="grow"><div class="name">Descanso padrão</div><div class="sub">Usado em treino livre e exercícios novos</div></div>
         <select class="input" style="width:auto;min-height:38px;padding:6px 34px 6px 12px" data-setting="rest">${REST_OPTIONS.filter(Boolean).map(s => `<option value="${s}" ${s === S.settings.rest ? 'selected' : ''}>${fmtRest(s)}</option>`).join('')}</select></label>
-      <label class="row"><div class="grow"><div class="name">Som ao fim do descanso</div><div class="sub">Toca com o app aberto</div></div>
+      <label class="row"><div class="grow"><div class="name">Som ao fim do descanso</div><div class="sub">Alarme quando o descanso acaba</div></div>
         <span class="switch"><input type="checkbox" data-setting="sound" ${S.settings.sound ? 'checked' : ''}><i></i></span></label>
+      <label class="row"><div class="grow"><div class="name">Manter a tela ligada no treino</div><div class="sub wrap">A tela não apaga sozinha enquanto há um treino em andamento</div></div>
+        <span class="switch"><input type="checkbox" data-setting="keepAwake" ${S.settings.keepAwake ? 'checked' : ''}><i></i></span></label>
+      <label class="row"><div class="grow"><div class="name">Descanso na tela bloqueada</div><div class="sub wrap">Mostra o tempo na tela bloqueada e na Dynamic Island (como “Tocando agora”) e toca o alarme com o iPhone bloqueado. Pausa a música de outros apps durante o descanso.</div></div>
+        <span class="switch"><input type="checkbox" data-setting="lockTimer" ${S.settings.lockTimer ? 'checked' : ''}><i></i></span></label>
     </div>
 
     ${'caches' in window ? `<h2 class="section">Fotos dos exercícios</h2>
@@ -1160,7 +1262,7 @@ function viewAjustes() {
       <span class="muted">O app abre em tela cheia, funciona offline e mantém seus dados.</span></div>`}
 
     <div style="text-align:center;margin-top:22px"><button class="link-btn" data-act="checkUpdate">Procurar atualização</button></div>
-    <p class="small muted" style="text-align:center;margin-top:6px">Ficha · versão 1.4<br>
+    <p class="small muted" style="text-align:center;margin-top:6px">Ficha · versão 1.5<br>
       Fotos e músculos dos exercícios: <a href="https://github.com/yuhonas/free-exercise-db" target="_blank" rel="noopener" style="text-decoration:underline">free-exercise-db</a> (domínio público)<br>
       Desenho do mapa muscular: <a href="https://github.com/GV79/react-body-highlighter" target="_blank" rel="noopener" style="text-decoration:underline">react-body-highlighter</a> (MIT)</p>`;
 }
@@ -1230,7 +1332,8 @@ function tick() {
     const left = (a.rest.end - now) / 1000;
     if (left <= 0) {
       a.rest = null; save(); renderDock();
-      beep(); toast('Descanso terminado — próxima série!');
+      if (!lockRestPlaying()) beep();
+      toast('Descanso terminado — próxima série!');
     } else {
       const el = $('[data-rest]');
       if (!el) renderDock();
@@ -1536,8 +1639,9 @@ const ACT = {
     r.end += d; r.total = Math.max(1, r.total + d / 1000);
     if (r.end <= Date.now()) S.active.rest = null;
     save(); renderDock();
+    if (S.active.rest) lockRestStart(); else lockRestStop();
   },
-  restSkip: () => { if (S.active) { S.active.rest = null; save(); renderDock(); } },
+  restSkip: () => { if (S.active) { S.active.rest = null; save(); renderDock(); } lockRestStop(); },
 
   // Execução (foto / vídeo)
   howTo: el => openHowTo(el.dataset.id, { evo: true }),
@@ -1664,6 +1768,11 @@ document.addEventListener('change', e => {
   if (t.dataset.setting === 'rest') { S.settings.rest = +t.value; save(); toast('Descanso padrão atualizado'); }
   else if (t.dataset.setting === 'sound') { S.settings.sound = t.checked; save(); if (t.checked) { unlockAudio(); beep(); } }
   else if (t.dataset.setting === 'glass') { S.settings.glass = t.checked; save(); applyLook(); }
+  else if (t.dataset.setting === 'keepAwake') { S.settings.keepAwake = t.checked; save(); syncWakeLock(); }
+  else if (t.dataset.setting === 'lockTimer') {
+    S.settings.lockTimer = t.checked; save();
+    if (t.checked) { lockRestStart(); toast('Inicie um descanso e bloqueie a tela para ver o tempo'); } else lockRestStop();
+  }
   else if (t.hasAttribute('data-pactive')) {
     const pr = S.programs.find(x => x.id === location.hash.split('/')[2]);
     if (pr) { pr.active = t.checked; save(); rerender(); }
@@ -1689,7 +1798,7 @@ document.addEventListener('keydown', e => {
 });
 $('#sheet-backdrop').addEventListener('click', closeSheet);
 window.addEventListener('hashchange', () => { if (!$('#sheet').hidden) closeSheet(); route(); });
-document.addEventListener('visibilitychange', () => { if (!document.hidden) tick(); });
+document.addEventListener('visibilitychange', () => { if (!document.hidden) tick(); syncWakeLock(); });
 
 /* ================= Início ================= */
 applyLook();

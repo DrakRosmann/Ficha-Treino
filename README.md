@@ -15,6 +15,7 @@ Funciona no iPhone pela Tela de Início, offline, sem App Store, sem Mac e sem c
   - **Com IA (Claude)**: entende observações em texto livre (ex.: “hérnia de disco”). Precisa de internet e de uma chave da API da Anthropic, salva só no aparelho (fica fora do backup). O uso é cobrado pela Anthropic na sua conta.
 - **Aparência**: tema automático, claro, escuro ou preto (OLED), 10 cores de destaque e efeito vidro no estilo Liquid Glass do iOS 26 (barra de abas flutuante e painéis translúcidos).
 - **Hoje**: mostra a ficha do dia, a semana com dias planejados/treinados e estatísticas.
+- **Tela bloqueada**: opção de manter a tela ligada durante o treino e opção de mostrar o descanso na tela bloqueada e na Dynamic Island (pelo “Tocando agora” do iPhone), com o alarme tocando mesmo com o celular bloqueado. Esta segunda opção pausa a música de outros apps durante o descanso. Live Activities de verdade só existem para apps nativos da App Store.
 - **Modo treino**: marque cada série, veja o que fez no último treino, cargas pré-preenchidas, séries de aquecimento, cronômetro de descanso com aviso sonoro, adicionar/trocar/reordenar exercícios no meio do treino.
 - **Corpo**: registre peso, composição corporal (gordura, massa muscular, água, gordura visceral, massa óssea, metabolismo basal) e medidas (pescoço, ombros, peito, braço, antebraço, cintura, abdômen, quadril, coxa, panturrilha). Mostra resumo com variação desde o início, gráficos por período (com meta de peso), massa magra, IMC, relação cintura/quadril, estimativa de gordura pelas medidas (método da Marinha dos EUA) e um mapa dos músculos treinados nos últimos 7 dias.
 - **Histórico**: mapa de frequência, volume, duração, recordes pessoais (PR) detectados automaticamente.
@@ -60,7 +61,7 @@ No Chrome/Firefox use o modo de dispositivo móvel (F12 → ícone de celular) p
 
 ## Atualizar o app
 
-Edite os arquivos, aumente a versão em `sw.js` (`const CACHE = 'ficha-v6'`) e faça `git push`.
+Edite os arquivos, aumente a versão em `sw.js` (`const CACHE = 'ficha-v7'`) e faça `git push`.
 O app procura a versão nova sozinho sempre que é aberto (com internet) e recarrega uma vez quando encontra. Se quiser forçar, use **Ajustes → Procurar atualização**. Os dados não são apagados.
 
 ## Estrutura
