@@ -59,7 +59,7 @@ function daysLabel(days) {
 const I = {
   back: '<svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>',
   plus: '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
-  check: '<svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+  check: '<svg viewBox="0 0 24 24"><path pathLength="1" d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
   chev: '<svg class="chev" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg>',
   up: '<svg viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></svg>',
   down: '<svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>',
@@ -70,6 +70,9 @@ const I = {
   x: '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>',
   copy: '<svg viewBox="0 0 24 24"><rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M15.5 8.5V6a1.5 1.5 0 0 0-1.5-1.5H6A1.5 1.5 0 0 0 4.5 6v8A1.5 1.5 0 0 0 6 15.5h2.5"/></svg>',
   edit: '<svg viewBox="0 0 24 24"><path d="M4.5 19.5h4l10-10-4-4-10 10z"/><path d="M13 7l4 4"/></svg>',
+  camera: '<svg viewBox="0 0 24 24"><path d="M4 8.5a2 2 0 0 1 2-2h2l1.5-2h5L16 6.5h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.5"/></svg>',
+  barcode: '<svg viewBox="0 0 24 24"><path d="M4 6v12M7 6v12M10.5 6v12M13 6v12M16.5 6v12M20 6v12"/></svg>',
+  food: '<svg viewBox="0 0 24 24"><path d="M7 3v18M4.5 3v5a2.5 2.5 0 0 0 5 0V3M17 21V3c-2 1.2-3.5 3.6-3.5 6.5V13H17"/></svg>',
   dumbbell: '<svg viewBox="0 0 24 24"><path d="M2.5 12h2M19.5 12h2M8 12h8"/><rect x="4.5" y="7.5" width="3.5" height="9" rx="1"/><rect x="16" y="7.5" width="3.5" height="9" rx="1"/></svg>',
   list: '<svg viewBox="0 0 24 24"><rect x="5" y="3.5" width="14" height="17" rx="2"/><path d="M8.5 9h7M8.5 13h7M8.5 17h4"/></svg>',
   chart: '<svg viewBox="0 0 24 24"><path d="M3.5 19.5h17"/><path d="M6 16l4-5 3.5 3 5-7"/></svg>',
@@ -88,7 +91,8 @@ function blank() {
   return {
     v: 1, settings: { rest: 90, sound: true, theme: 'auto', accent: 'limao', style: 'auto', styleAuto: true, keepAwake: true, iosTimer: false, timerShortcut: 'Descanso Ficha',
       progression: true, rir: true, bar: 20, lastBackup: 0, backupSnooze: 0 },
-    custom: [], programs: [], routines: [], sessions: [], active: null, videos: {}, profile: null, body: [], bodyGoal: {}
+    custom: [], programs: [], routines: [], sessions: [], active: null, videos: {}, profile: null, body: [], bodyGoal: {},
+    food: { days: {}, custom: [], fav: [], recent: [], goal: null, tdee: null }
   };
 }
 // Dados antigos (sem programas): as fichas existentes viram o programa "Meu treino"
@@ -483,28 +487,78 @@ document.addEventListener('pointerdown', e => {
 
 /* ================= UI: toast, sheet, som ================= */
 let toastTimer;
+const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 function toast(msg) {
   const t = $('#toast');
-  t.textContent = msg; t.hidden = false;
+  t.textContent = msg; t.hidden = false; t.classList.remove('out');
   t.style.animation = 'none'; void t.offsetWidth; t.style.animation = '';
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { t.hidden = true; }, 2400);
+  toastTimer = setTimeout(() => {
+    t.classList.add('out');
+    toastTimer = setTimeout(() => { t.hidden = true; t.classList.remove('out'); }, reduceMotion() ? 0 : 220);
+  }, 2400);
 }
 
-let sheetCtx = null;
-function openSheet(html, ctx = null) {
-  sheetCtx = ctx;
-  const sh = $('#sheet');
+let sheetCtx = null, sheetCleanup = null, sheetHideTimer = 0;
+function runSheetCleanup() { if (sheetCleanup) { const f = sheetCleanup; sheetCleanup = null; f(); } }
+// cleanup: chamado quando o painel fecha ou é trocado (ex.: desligar a câmera)
+function openSheet(html, ctx = null, cleanup = null) {
+  runSheetCleanup();
+  sheetCtx = ctx; sheetCleanup = cleanup;
+  const sh = $('#sheet'), bd = $('#sheet-backdrop');
+  const swap = !sh.hidden && !sh.classList.contains('closing');
+  clearTimeout(sheetHideTimer);
+  sh.classList.remove('closing', 'swap'); bd.classList.remove('closing');
+  sh.style.transform = ''; sh.style.transition = ''; bd.style.opacity = '';
   sh.innerHTML = '<div class="grab"></div>' + html;
-  sh.hidden = false; $('#sheet-backdrop').hidden = false;
+  if (swap) { void sh.offsetWidth; sh.classList.add('swap'); } // troca de conteúdo com o painel aberto
+  sh.hidden = false; bd.hidden = false;
   document.documentElement.style.overflow = 'hidden';
 }
 function closeSheet() {
   sheetCtx = null;
-  $('#sheet').hidden = true; $('#sheet-backdrop').hidden = true;
-  $('#sheet').innerHTML = '';
+  runSheetCleanup();
+  const sh = $('#sheet'), bd = $('#sheet-backdrop');
   document.documentElement.style.overflow = '';
+  if (sh.hidden || sh.classList.contains('closing')) return;
+  const done = () => {
+    sh.hidden = true; bd.hidden = true; sh.innerHTML = '';
+    sh.classList.remove('closing', 'swap'); bd.classList.remove('closing');
+    sh.style.transform = ''; sh.style.transition = ''; bd.style.opacity = '';
+  };
+  if (reduceMotion()) { done(); return; }
+  sh.classList.add('closing'); bd.classList.add('closing');
+  clearTimeout(sheetHideTimer);
+  sheetHideTimer = setTimeout(done, 260);
 }
+// Arrastar o painel para baixo (pela alça ou pelo título) fecha
+(() => {
+  let drag = null;
+  document.addEventListener('pointerdown', e => {
+    const sh = $('#sheet');
+    if (sh.hidden || sh.classList.contains('closing')) return;
+    const h = e.target.closest('#sheet .grab, #sheet .sheet-head');
+    if (!h || e.target.closest('button, input, a, label')) return;
+    drag = { y: e.clientY, t: performance.now(), dy: 0 };
+    sh.style.transition = 'none';
+  });
+  document.addEventListener('pointermove', e => {
+    if (!drag) return;
+    drag.dy = Math.max(0, e.clientY - drag.y);
+    $('#sheet').style.transform = `translateY(${drag.dy}px)`;
+    $('#sheet-backdrop').style.opacity = String(Math.max(0, 1 - drag.dy / 400));
+  });
+  const end = () => {
+    if (!drag) return;
+    const sh = $('#sheet'), v = drag.dy / Math.max(1, performance.now() - drag.t), dy = drag.dy;
+    drag = null;
+    if (dy > 110 || (v > 0.6 && dy > 30)) { closeSheet(); return; }
+    sh.style.transition = 'transform .3s cubic-bezier(.32,.72,0,1)';
+    sh.style.transform = ''; $('#sheet-backdrop').style.opacity = '';
+  };
+  document.addEventListener('pointerup', end);
+  document.addEventListener('pointercancel', end);
+})();
 function sheetHead(title, right = '') {
   return `<div class="sheet-head"><h3>${esc(title)}</h3>${right}<button class="icon-btn" data-act="closeSheet" aria-label="Fechar">${I.x}</button></div>`;
 }
@@ -551,14 +605,17 @@ const routes = [
   [/^#\/modelo\/([\w-]+)$/, viewModelo, 'fichas'],
   [/^#\/corpo$/, () => typeof viewCorpo === 'function' ? viewCorpo() : viewUpdating(), 'corpo'],
   [/^#\/assistente$/, () => typeof viewAssistente === 'function' ? viewAssistente() : viewUpdating(), 'fichas'],
-  [/^#\/exercicios$/, viewExercicios, 'exercicios'],
-  [/^#\/exercicio\/([\w-]+)$/, viewExercicio, 'exercicios'],
+  [/^#\/dieta$/, () => typeof viewDieta === 'function' ? viewDieta() : viewUpdating(), 'dieta'],
+  [/^#\/exercicios$/, viewExercicios, 'fichas'],
+  [/^#\/exercicio\/([\w-]+)$/, viewExercicio, 'fichas'],
   [/^#\/historico$/, viewHistorico, 'historico'],
   [/^#\/sessao\/([\w-]+)$/, viewSessao, 'historico'],
   [/^#\/treino$/, viewTreino, null],
   [/^#\/ajustes$/, viewAjustes, 'ajustes']
 ];
 let current = null, currentTab = null, lastHash = null, afterRender = null;
+const TAB_ROOTS = ['#/hoje', '#/fichas', '#/dieta', '#/historico', '#/corpo', '#/ajustes'];
+let navStack = [], viewAnim = false;
 
 function route() {
   const h = location.hash || '#/hoje';
@@ -567,10 +624,20 @@ function route() {
     if (m) {
       current = () => fn(...m.slice(1));
       currentTab = tab;
-      const changed = h !== lastHash;
+      const changed = h !== lastHash, first = lastHash == null;
+      let dir = 'none';
+      if (changed && !first) {
+        if (navStack[navStack.length - 2] === h) { dir = 'back'; navStack.pop(); }
+        else if (TAB_ROOTS.includes(h)) { dir = 'tab'; navStack = [h]; }
+        else { dir = 'forward'; navStack.push(h); }
+      } else if (first) navStack = [h];
       lastHash = h;
-      render();
-      if (changed) window.scrollTo(0, 0);
+      viewAnim = changed;
+      const update = () => { render(); if (changed) window.scrollTo(0, 0); };
+      if (dir !== 'none' && document.startViewTransition && !reduceMotion() && !document.hidden) {
+        document.documentElement.dataset.nav = dir;
+        document.startViewTransition(update);
+      } else update();
       return;
     }
   }
@@ -581,9 +648,21 @@ function render() {
   syncWakeLock();
   const html = current();
   if (html == null) return; // a view redirecionou
-  $('#view').innerHTML = html;
+  const view = $('#view');
+  view.innerHTML = html;
+  // Animações de entrada (gráficos, anéis, barras) só quando a tela muda, não a cada atualização
+  if (viewAnim) {
+    viewAnim = false;
+    view.classList.remove('anim'); void view.offsetWidth; view.classList.add('anim');
+    view.classList.toggle('no-vt', !document.startViewTransition);
+    clearTimeout(render.animT); render.animT = setTimeout(() => view.classList.remove('anim', 'no-vt'), 1400);
+  }
   document.body.classList.toggle('in-workout', location.hash === '#/treino');
-  document.querySelectorAll('#tabs a').forEach(a => a.classList.toggle('on', a.dataset.tab === currentTab));
+  const tabs = [...document.querySelectorAll('#tabs a')], ti = tabs.findIndex(a => a.dataset.tab === currentTab);
+  tabs.forEach((a, i) => a.classList.toggle('on', i === ti));
+  const bar = $('#tabs');
+  bar.style.setProperty('--ti', Math.max(0, ti)); bar.style.setProperty('--tn', tabs.length);
+  bar.classList.toggle('no-tab', ti < 0);
   renderDock();
   if (afterRender) { const f = afterRender; afterRender = null; f(); }
 }
@@ -689,6 +768,7 @@ function viewHoje() {
     html += `<div class="btn-row" style="margin-top:12px"><button class="btn" data-act="startEmpty">${I.plus}Treino livre</button><a class="btn" href="#/fichas">${I.list}Ver fichas</a></div>`;
   }
 
+  if (typeof dietTodayCard === 'function') html += dietTodayCard();
   if (!S.active && backupDue()) {
     const n = unbackedSessions();
     html += `<div class="card backup-card"><div class="bk-row"><span class="bk-ic">${I.download}</span>
@@ -728,7 +808,8 @@ function routineRow(r, i) {
 function viewFichas() {
   let html = topBar({ right: `<button class="link-btn" data-act="newMenu">${I.plus.replace('<svg', '<svg class="inline-ic"')}Novo</button>` }) + `<h1 class="title">Fichas</h1>
     <a class="tpl-banner" href="#/assistente"><span class="tpl-ic">${I.sparkle}</span><div class="grow"><b>Montar meu treino</b><span>Responda algumas perguntas e escolha entre 3 opções</span></div>${I.chev}</a>
-    <a class="tpl-banner alt" href="#/modelos"><span class="tpl-ic">${I.list}</span><div class="grow"><b>Modelos prontos</b><span>PPL, Upper/Lower, ABC, ABCDE, em casa e mais</span></div>${I.chev}</a>`;
+    <a class="tpl-banner alt" href="#/modelos"><span class="tpl-ic">${I.list}</span><div class="grow"><b>Modelos prontos</b><span>PPL, Upper/Lower, ABC, ABCDE, em casa e mais</span></div>${I.chev}</a>
+    <a class="tpl-banner alt" href="#/exercicios"><span class="tpl-ic">${I.dumbbell}</span><div class="grow"><b>Exercícios</b><span>${allEx().length} exercícios com foto da execução, músculos e sua evolução</span></div>${I.chev}</a>`;
   if (!S.routines.length && !S.programs.length) {
     return html + `<div class="card">${emptyState(I.list, 'Nenhuma ficha ainda',
       'Uma <b>ficha</b> é a lista de exercícios de um dia de treino. Um <b>programa</b> agrupa várias fichas — por exemplo “Meu treino” com Push, Pull e Legs.',
@@ -915,7 +996,7 @@ function exerciseForm(ex, from) {
 let exQ = '', exG = '';
 function viewExercicios() {
   const chips = ['', ...GROUPS].map(g => `<button class="chip ${exG === g ? 'on' : ''}" data-act="exGroup" data-g="${esc(g)}">${g || 'Todos'}</button>`).join('');
-  return topBar({ right: `<button class="link-btn" data-act="newExercise">Novo</button>` }) + `<h1 class="title">Exercícios</h1>
+  return topBar({ back: '#/fichas', right: `<button class="link-btn" data-act="newExercise">Novo</button>` }) + `<h1 class="title">Exercícios</h1>
     <div class="search">${I.search}<input class="input" id="exq" type="search" placeholder="Buscar entre ${allEx().length} exercícios" value="${esc(exQ)}" autocomplete="off"></div>
     <div class="chips">${chips}</div>
     <div id="exlist">${exList()}</div>`;
@@ -1007,7 +1088,7 @@ function chartSVG(points, unit, opts = {}) {
       <div><b style="font-size:24px" class="num">${fmt(lastV, dec)}</b> <span class="muted small">${unit}</span></div>
       <span class="badge ${good ? 'accent' : ''} num">${diff >= 0 ? '+' : '−'}${fmt(Math.abs(diff), dec)} ${unit}</span></div>
     <svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Gráfico de evolução">
-      ${grid}${goalLine}<path class="area" d="${area}"/><path class="line" d="${line}"/>${dots}
+      ${grid}${goalLine}<path class="area" d="${area}"/><path class="line" pathLength="1" d="${line}"/>${dots}
       <text x="${pl}" y="${H - 6}">${dateShort(pts[0].t)}</text><text x="${W - pr}" y="${H - 6}" text-anchor="end">${dateShort(pts[pts.length - 1].t)}</text>
     </svg>`;
 }
@@ -1067,7 +1148,9 @@ const SET_TYPES = [
 const setType = s => s.warm ? 'warm' : s.t || '';
 const setMark = s => (SET_TYPES.find(t => t[0] === setType(s)) || [])[3];
 
+let justDone = null; // série recém-concluída (anima o ✓)
 function viewTreino() {
+  const pop = justDone; justDone = null;
   const a = S.active;
   if (!a) { location.replace('#/hoje'); return null; }
   const total = sum(a.exercises.map(e => e.sets.length));
@@ -1101,7 +1184,7 @@ function viewTreino() {
       const prev = ref ? fmtSet(ex.kind, ref) : '—';
       const inp = f => `<input type="text" inputmode="decimal" value="${esc(s[f])}" placeholder="${esc(placeholder(ex, i, f))}" data-wf="${f}" data-x="${x}" data-s="${i}" aria-label="${f === 'a' ? K.a : K.b} da série ${label}">`;
       const rirSel = `<select class="rir" data-rir data-x="${x}" data-s="${i}" aria-label="RIR da série ${label}">${['', 0, 1, 2, 3, 4, 5].map(v => `<option value="${v}" ${String(s.rir ?? '') === String(v) ? 'selected' : ''}>${v === '' ? '–' : v === 5 ? '5+' : v}</option>`).join('')}</select>`;
-      return `<tr class="${s.done ? 'done' : ''}">
+      return `<tr class="${s.done ? 'done' : ''} ${pop === `${x}-${i}` ? 'pop' : ''}">
         <td><button class="setno ${ty}" data-act="setMenu" data-x="${x}" data-s="${i}" aria-label="Tipo da série ${label}">${label}</button></td>
         <td class="prev num">${prev}</td>
         <td>${inp('a')}</td>${K.b ? `<td>${inp('b')}</td>` : ''}${rir ? `<td class="rirc">${s.warm ? '' : rirSel}</td>` : ''}
@@ -1109,7 +1192,7 @@ function viewTreino() {
     }).join('');
     const sg = typeof suggestionFor === 'function' && !allDone ? suggestionFor(ex) : null;
     const targetTxt = [ex.sets.filter(s => !s.warm).length + ' × ' + (ex.target || '—') + (ex.kind === 's' ? 's' : ex.kind === 'c' ? ' min' : ''), `descanso ${fmtRest(ex.rest)}`].join(' · ');
-    html += `<div class="ex-card ${allDone ? 'complete' : ''}">
+    html += `<div class="ex-card ${allDone ? 'complete' : ''} ${allDone && pop && pop.split('-')[0] === String(x) ? 'just-complete' : ''}">
       <div class="ex-title"><button class="thumb-btn" data-act="howTo" data-id="${ex.exId}" aria-label="Ver execução">${thumb(getEx(ex.exId))}</button>
         <div class="grow"><a class="name" href="#/exercicio/${ex.exId}">${esc(ex.name)}</a><div class="target num">${targetTxt}</div></div>
         <button class="icon-btn" data-act="exMenu" data-x="${x}" aria-label="Opções do exercício" style="margin:-8px -6px 0 0">${I.more}</button></div>
@@ -1257,20 +1340,52 @@ function commitWorkout(updateRoutine) {
   go(`#/sessao/${sess.id}`);
 }
 
+// Confete (comemoração no fim do treino)
+function confetti(n = 80) {
+  if (reduceMotion() || !Element.prototype.animate) return;
+  const cs = getComputedStyle(document.documentElement);
+  const colors = [cs.getPropertyValue('--accent').trim(), cs.getPropertyValue('--gold').trim(), '#4DA3FF', '#FF6FAE', '#34D399', '#FFFFFF'];
+  const box = document.createElement('div');
+  box.className = 'confetti'; document.body.appendChild(box);
+  const W = innerWidth, H = innerHeight;
+  for (let i = 0; i < n; i++) {
+    const p = document.createElement('i'), x0 = W / 2 + (Math.random() - .5) * 60, y0 = H * .32;
+    const dx = (Math.random() - .5) * W * 1.1, up = 120 + Math.random() * 220, rot = (Math.random() - .5) * 900;
+    p.style.cssText = `left:${x0}px;top:${y0}px;background:${colors[i % colors.length]};width:${6 + Math.random() * 5}px;height:${8 + Math.random() * 8}px`;
+    box.appendChild(p);
+    p.animate([
+      { transform: 'translate(0,0) rotate(0)', opacity: 1 },
+      { transform: `translate(${dx * .55}px,${-up}px) rotate(${rot * .4}deg)`, opacity: 1, offset: .28 },
+      { transform: `translate(${dx}px,${H - y0 + 60}px) rotate(${rot}deg)`, opacity: .85 }
+    ], { duration: 1700 + Math.random() * 1100, easing: 'cubic-bezier(.25,.6,.45,1)', delay: Math.random() * 120, fill: 'forwards' });
+  }
+  setTimeout(() => box.remove(), 3200);
+}
+// Números que sobem até o valor (resumo do treino)
+function countUp(root) {
+  if (reduceMotion()) return;
+  root.querySelectorAll('[data-count]').forEach(el => {
+    const to = +el.dataset.count, f = el.dataset.fmt === 'int' ? fmtInt : v => String(Math.round(v)), t0 = performance.now();
+    const step = t => { const k = Math.min(1, (t - t0) / 800), e = 1 - (1 - k) ** 3; el.textContent = f(to * e); if (k < 1) requestAnimationFrame(step); };
+    requestAnimationFrame(step);
+  });
+}
 function showSummary(sess) {
   const vol = sessVolume(sess);
   const prs = sess.prs || [];
   openSheet(`<div class="sheet-body"><div class="summary-big">
-      <div style="display:inline-grid;place-items:center;width:64px;height:64px;border-radius:20px;background:var(--accent);color:var(--accent-ink)">
+      <div class="trophy-ic" style="display:inline-grid;place-items:center;width:64px;height:64px;border-radius:20px;background:var(--accent);color:var(--accent-ink)">
         <svg viewBox="0 0 24 24" style="width:34px;height:34px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round">${I.trophy.replace(/<\/?svg[^>]*>/g, '')}</svg></div>
       <h3>Treino concluído!</h3><div class="muted">${esc(sess.name)}</div></div>
     <div class="stats" style="margin-top:16px">
       <div class="stat"><b class="num">${fmtDur(sess.end - sess.start)}</b><span>duração</span></div>
-      <div class="stat"><b class="num">${sessSetCount(sess)}</b><span>séries</span></div>
-      <div class="stat"><b class="num">${vol ? fmtInt(vol) : '—'}</b><span>kg de volume</span></div></div>
+      <div class="stat"><b class="num" data-count="${sessSetCount(sess)}">${sessSetCount(sess)}</b><span>séries</span></div>
+      <div class="stat"><b class="num" ${vol ? `data-count="${Math.round(vol)}" data-fmt="int"` : ''}>${vol ? fmtInt(vol) : '—'}</b><span>kg de volume</span></div></div>
     ${prs.length ? `<h2 class="section">Recordes pessoais 🎉</h2><div class="list">${prs.map(p => `<div class="kv"><span>${esc(p.name)} · ${p.label}</span><b style="color:var(--gold)">${fmt(p.value)} ${p.unit}</b></div>`).join('')}</div>` : ''}
     </div><div class="sheet-foot stack">${backupDue() ? `<button class="btn block" data-act="exportData">${I.download}Salvar backup · ${unbackedSessions()} treinos sem backup</button>` : ''}
       <button class="btn primary block" data-act="closeSheet">Fechar</button></div>`);
+  countUp($('#sheet'));
+  setTimeout(() => confetti(prs.length ? 120 : 70), 150);
 }
 
 /* ================= Tela: Histórico ================= */
@@ -1417,9 +1532,10 @@ function viewAjustes() {
       <span class="muted">O app abre em tela cheia, funciona offline e mantém seus dados.</span></div>`}
 
     <div style="text-align:center;margin-top:22px"><button class="link-btn" data-act="checkUpdate">Procurar atualização</button></div>
-    <p class="small muted" style="text-align:center;margin-top:6px">Ficha · versão 1.9<br>
+    <p class="small muted" style="text-align:center;margin-top:6px">Ficha · versão 2.0<br>
       Fotos e músculos dos exercícios: <a href="https://github.com/yuhonas/free-exercise-db" target="_blank" rel="noopener" style="text-decoration:underline">free-exercise-db</a> (domínio público)<br>
-      Desenho do mapa muscular: <a href="https://github.com/GV79/react-body-highlighter" target="_blank" rel="noopener" style="text-decoration:underline">react-body-highlighter</a> (MIT)</p>`;
+      Desenho do mapa muscular: <a href="https://github.com/GV79/react-body-highlighter" target="_blank" rel="noopener" style="text-decoration:underline">react-body-highlighter</a> (MIT)<br>
+      Alimentos: TACO, 4ª ed. (NEPA/UNICAMP) e <a href="https://world.openfoodfacts.org" target="_blank" rel="noopener" style="text-decoration:underline">Open Food Facts</a> (ODbL)</p>`;
 }
 
 /* ================= Segurança dos dados ================= */
@@ -1453,7 +1569,7 @@ function prevCopy() {
 function fromBackup(d) {
   const b = blank();
   migrate(d);
-  return { ...b, settings: { ...b.settings, ...(d.settings || {}) }, custom: d.custom || [], videos: d.videos || {}, profile: d.profile || null, body: d.body || [], bodyGoal: d.bodyGoal || {}, programs: d.programs || [], routines: d.routines, sessions: d.sessions.sort((x, y) => y.start - x.start), active: d.active || null };
+  return { ...b, settings: { ...b.settings, ...(d.settings || {}) }, custom: d.custom || [], videos: d.videos || {}, profile: d.profile || null, body: d.body || [], bodyGoal: d.bodyGoal || {}, food: d.food || b.food, programs: d.programs || [], routines: d.routines, sessions: d.sessions.sort((x, y) => y.start - x.start), active: d.active || null };
 }
 
 function exportData() {
@@ -1491,13 +1607,14 @@ function importData(file) {
 }
 
 /* ================= Dock (descanso / treino em andamento) ================= */
+let dockSig = { rest: false, active: false }; // o que já estava no dock (para animar só o que aparece)
 function renderDock() {
   const dock = $('#dock');
   const a = S.active;
   let html = '';
   if (a && a.rest && a.rest.end > Date.now()) {
     const left = (a.rest.end - Date.now()) / 1000, C = 2 * Math.PI * 19;
-    html += `<div class="dock-bar rest">
+    html += `<div class="dock-bar rest ${dockSig.rest ? '' : 'in'}">
       <svg class="ring" viewBox="0 0 44 44"><circle class="bg" cx="22" cy="22" r="19"/><circle class="fg" cx="22" cy="22" r="19" stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - left / a.rest.total)}" data-ring="${C}"/></svg>
       ${S.settings.iosTimer
         ? `<button class="grow" data-act="iosTimerSync" aria-label="Enviar o tempo ao Timer do iPhone"><div class="lbl">Descanso ↻</div><div class="big num" data-rest>${clock(left)}</div></button>`
@@ -1507,11 +1624,12 @@ function renderDock() {
       <button class="btn sm" data-act="restSkip">Pular</button></div>`;
   }
   if (a && location.hash !== '#/treino') {
-    html += `<a class="dock-bar" href="#/treino"><div class="grow"><div class="lbl">Treino em andamento</div>
+    html += `<a class="dock-bar ${dockSig.active ? '' : 'in'}" href="#/treino"><div class="grow"><div class="lbl">Treino em andamento</div>
       <div style="font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(a.name)} · <span class="num" data-elapsed="${a.start}">${clock((Date.now() - a.start) / 1000)}</span></div></div>
       <span class="btn sm primary" style="background:var(--accent);color:var(--accent-ink)">Abrir</span></a>`;
   }
   dock.innerHTML = html;
+  dockSig = { rest: !!dock.querySelector('.rest'), active: !!dock.querySelector('a.dock-bar') };
 }
 
 function tick() {
@@ -1756,6 +1874,7 @@ const ACT = {
     }
     if (ex.kind === 'w' && s.a === '') s.a = '0';
     s.done = true;
+    justDone = `${el.dataset.x}-${i}`;
     unlockAudio();
     const next = ex.sets[i + 1];
     if (!(next && next.t === 'drop' && !next.done)) startRest(ex.rest); // drop set vem sem descanso
@@ -1959,6 +2078,7 @@ const ACT = {
 if (typeof ASSIST_ACTIONS !== 'undefined') Object.assign(ACT, ASSIST_ACTIONS);
 if (typeof BODY_ACTIONS !== 'undefined') Object.assign(ACT, BODY_ACTIONS);
 if (typeof TOOLS_ACTIONS !== 'undefined') Object.assign(ACT, TOOLS_ACTIONS);
+if (typeof DIET_ACTIONS !== 'undefined') Object.assign(ACT, DIET_ACTIONS);
 
 function backToPicker() {
   renderPicker();
@@ -1984,6 +2104,7 @@ document.addEventListener('pointerdown', unlockAudio, { once: true });
 
 document.addEventListener('input', e => {
   const t = e.target;
+  if (typeof dietInput === 'function' && dietInput(t)) return;
   if (t.dataset.wf && S.active) {
     const ex = S.active.exercises[+t.dataset.x];
     ex.sets[+t.dataset.s][t.dataset.wf] = t.value.replace(/[^\d.,]/g, '');
@@ -2014,6 +2135,7 @@ document.addEventListener('input', e => {
 });
 document.addEventListener('change', e => {
   const t = e.target;
+  if (typeof dietChange === 'function' && dietChange(t)) return;
   if (t.dataset.setting === 'rest') { S.settings.rest = +t.value; save(); toast('Descanso padrão atualizado'); }
   else if (t.dataset.setting === 'sound') { S.settings.sound = t.checked; save(); if (t.checked) { unlockAudio(); beep(); } }
   else if (t.dataset.setting === 'keepAwake') { S.settings.keepAwake = t.checked; save(); syncWakeLock(); }
