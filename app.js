@@ -1606,7 +1606,7 @@ function viewAjustes() {
       <span class="muted">O app abre em tela cheia, funciona offline e mantém seus dados.</span></div>`}
 
     <div style="text-align:center;margin-top:22px"><button class="link-btn" data-act="checkUpdate">Procurar atualização</button></div>
-    <p class="small muted" style="text-align:center;margin-top:6px">Ficha · versão 2.5<br>
+    <p class="small muted" style="text-align:center;margin-top:6px">Ficha · versão 2.5.1<br>
       Fotos e músculos dos exercícios: <a href="https://github.com/yuhonas/free-exercise-db" target="_blank" rel="noopener" style="text-decoration:underline">free-exercise-db</a> (domínio público)<br>
       Desenho do mapa muscular: <a href="https://github.com/GV79/react-body-highlighter" target="_blank" rel="noopener" style="text-decoration:underline">react-body-highlighter</a> (MIT)<br>
       Alimentos: TACO, 4ª ed. (NEPA/UNICAMP) e <a href="https://world.openfoodfacts.org" target="_blank" rel="noopener" style="text-decoration:underline">Open Food Facts</a> (ODbL)</p>`;
@@ -2359,6 +2359,18 @@ window.addEventListener('scroll', () => glassScroll(false), { passive: true });
   };
   window.addEventListener('pointerup', end);
   window.addEventListener('pointercancel', end);
+  // Toque interrompido sem pointerup (gesto do sistema na borda, app em segundo plano): cancela sem trocar de aba
+  const cancel = () => {
+    if (!scrub) return;
+    const { start } = scrub; scrub = null;
+    bar.classList.remove('press');
+    bar.style.setProperty('--ti', start);
+    if (typeof liquidTabReset === 'function') liquidTabReset();
+  };
+  window.addEventListener('touchcancel', cancel);
+  window.addEventListener('blur', cancel);
+  window.addEventListener('pagehide', cancel);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) cancel(); });
 })();
 // Reflexo do vidro acompanha a inclinação do iPhone (opcional, pede permissão no iOS)
 let glassMotionOn = false;

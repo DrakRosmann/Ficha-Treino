@@ -107,6 +107,7 @@ function liquidTabs(ti) {
   bar.classList.add('liquid');
   const g = tabGeom(), idx = Math.max(0, ti), to = idx * g.w;
   TAB.idx = idx; TAB.w = g.w;
+  if (TAB.drag && performance.now() - TAB.drag.t > 1500) liquidTabReset(); // arraste interrompido sem soltar
   if (TAB.drag) return;
   if (!TAB.ready || bar.classList.contains('mini') || bar.classList.contains('no-tab')) { TAB.ready = true; pillSet(to); return; }
   if (Math.abs(TAB.to - to) < 0.5 && (TAB.anim || Math.abs(TAB.x - to) < 0.5)) return;
@@ -145,6 +146,17 @@ function liquidTabPress(on, idx) {
   TAB.drag = null;
   pillGo((idx != null ? idx : TAB.idx) * TAB.w, clamp(v, -4000, 4000)); // solta com a velocidade do dedo
 }
+// Toque interrompido (gesto do sistema, app em segundo plano): desfaz a lente e volta para a aba atual
+function liquidTabReset() {
+  const bar = tabBar();
+  if (TAB.raf) { cancelAnimationFrame(TAB.raf); TAB.raf = 0; }
+  if (!bar) return;
+  const v = TAB.drag ? TAB.drag.v : 0, was = !!TAB.drag;
+  TAB.drag = null;
+  bar.classList.remove('press', 'dragging');
+  bar.querySelectorAll('a').forEach(a => { a.classList.remove('near'); const s = a.querySelector('svg'); if (s) s.style.scale = ''; });
+  if (was && bar.classList.contains('liquid')) pillGo(TAB.idx * TAB.w, clamp(v, -2000, 2000));
+}
 function liquidTabDrag(clientX) {
   const bar = tabBar();
   if (!bar || !bar.classList.contains('liquid')) return;
@@ -154,7 +166,8 @@ function liquidTabDrag(clientX) {
     TAB.raf = 0;
     const g = tabGeom(), max = (g.n - 1) * g.w, left = g.bar.getBoundingClientRect().left;
     let x = TAB.dragX - left - 4 - g.w / 2, over = 0;
-    if (x < 0) { x = -rubber(-x, g.w * 0.8); over = -x / g.w; } else if (x > max) { x = max + rubber(x - max, g.w * 0.8); over = (x - max) / g.w; }
+    // Elástico curto nas pontas: a gota passa no máximo ~16 px da barra
+    if (x < 0) { x = -rubber(-x, 16); over = -x / g.w; } else if (x > max) { x = max + rubber(x - max, 16); over = (x - max) / g.w; }
     const now = performance.now();
     if (!TAB.drag) { TAB.drag = { x: pillState().x, t: now - 16, v: 0 }; pillStop(); g.bar.classList.add('dragging'); }
     const inst = (x - TAB.drag.x) / (Math.max(8, now - TAB.drag.t) / 1000);
@@ -346,6 +359,11 @@ document.addEventListener('change', e => {
 }, true);
 
 /* ================= Liga e desliga ================= */
+// Se o app sai da tela no meio de um toque (o iPhone nem sempre avisa o fim do toque), solta tudo
+const lqDrop = () => { if (TAB.drag || TAB.raf) liquidTabReset(); lqRelease(); };
+document.addEventListener('visibilitychange', () => { if (document.hidden) lqDrop(); });
+window.addEventListener('pagehide', lqDrop);
+window.addEventListener('blur', lqDrop);
 new MutationObserver(lqSync).observe(lqRoot, { attributes: true, attributeFilter: ['data-glass'] });
 lqReduce.addEventListener && lqReduce.addEventListener('change', lqSync);
 // Barra muda de largura (minimizar, girar a tela): reposiciona a gota sem animar
