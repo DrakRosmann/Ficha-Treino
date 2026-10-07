@@ -289,7 +289,7 @@ select.input { background-image: linear-gradient(45deg, transparent 50%, var(--m
 /* ===== Tab bar ===== */
 #tabs {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
-  display: grid; grid-template-columns: repeat(5, 1fr);
+  display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr);
   height: calc(var(--tabbar-h) + var(--safe-b));
   padding-bottom: var(--safe-b);
   background: color-mix(in srgb, var(--bg) 82%, transparent);
@@ -297,8 +297,8 @@ select.input { background-image: linear-gradient(45deg, transparent 50%, var(--m
   backdrop-filter: saturate(160%) blur(20px);
   border-top: 1px solid var(--line);
 }
-#tabs a { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; color: var(--faint); font-size: 11px; font-weight: 600; }
-#tabs a svg { width: 25px; height: 25px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+#tabs a { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; color: var(--faint); font-size: 10.5px; font-weight: 600; min-width: 0; white-space: nowrap; }
+#tabs a svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
 #tabs a.on { color: var(--accent-text); }
 body.in-workout #tabs { display: none; }
 body.in-workout #dock { bottom: calc(var(--safe-b) + 12px); }
@@ -631,3 +631,54 @@ body.in-workout #toast { top: calc(var(--safe-t) + 96px); }
 @keyframes ai-pulse { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 45%, transparent); } 50% { box-shadow: 0 0 0 16px transparent; } }
 @keyframes ai-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .ai-orb, .ai-orb svg { animation: none; } }
+
+/* ===== Mapa muscular ===== */
+.bm { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.bm-fig { margin: 0; text-align: center; min-width: 0; }
+.bm-fig svg { width: 100%; height: auto; max-height: 230px; display: block; margin: 0 auto; }
+.bm-fig figcaption { font-size: 10px; font-weight: 700; color: var(--faint); text-transform: uppercase; letter-spacing: .08em; margin-top: 2px; }
+.bm-m { fill: color-mix(in srgb, var(--text) 14%, transparent); transition: fill .25s; }
+.bm-base { fill: color-mix(in srgb, var(--text) 8%, transparent); }
+.bm-m.pri { fill: var(--accent); }
+.bm-m.sec { fill: color-mix(in srgb, var(--accent) 42%, var(--surface-3)); }
+.bm-m.l1 { fill: color-mix(in srgb, var(--accent) 32%, var(--surface-3)); }
+.bm-m.l2 { fill: color-mix(in srgb, var(--accent) 65%, var(--surface-3)); }
+.bm-m.l3 { fill: var(--accent); }
+.bm-card { display: grid; grid-template-columns: minmax(130px, 44%) 1fr; gap: 14px; align-items: center; margin-top: 12px; padding: 12px 14px; border-radius: var(--radius); background: var(--surface); }
+.bm-legend { display: flex; flex-direction: column; gap: 12px; }
+.bm-key { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; line-height: 1.35; }
+.bm-key b { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 2px; }
+.bm-key i, .bm-scale i { flex: none; width: 14px; height: 14px; border-radius: 4px; margin-top: 2px; }
+.bm-key i.pri { background: var(--accent); }
+.bm-key i.sec { background: color-mix(in srgb, var(--accent) 42%, var(--surface-3)); }
+.bm-heat .bm { max-width: 360px; margin: 0 auto; }
+.bm-scale { display: flex; justify-content: center; gap: 14px; margin: 10px 0 12px; font-size: 12px; color: var(--muted); font-weight: 600; }
+.bm-scale span { display: inline-flex; align-items: center; gap: 6px; }
+.bm-scale i { margin: 0; }
+.bm-scale i.l1 { background: color-mix(in srgb, var(--accent) 32%, var(--surface-3)); }
+.bm-scale i.l2 { background: color-mix(in srgb, var(--accent) 65%, var(--surface-3)); }
+.bm-scale i.l3 { background: var(--accent); }
+.mtag b { font-weight: 800; margin-left: 2px; }
+
+/* ===== Corpo ===== */
+.kv-btn { width: 100%; border: 0; border-bottom: 1px solid var(--line); background: transparent; color: inherit; text-align: left; font: inherit; }
+.kv-btn:last-child { border-bottom: 0; }
+.kv-btn:active { background: var(--surface-2); }
+.kv b small { font-weight: 600; font-size: 12px; }
+.dl { font-style: normal; font-size: 12px; font-weight: 700; margin-left: 6px; padding: 2px 7px; border-radius: 999px; background: var(--surface-2); color: var(--muted); }
+.dl.good { background: var(--accent-soft); color: var(--accent-text); }
+.dl.bad { background: var(--danger-soft); color: var(--danger); }
+.seg-sm button { padding: 7px 0; font-size: 12.5px; }
+.chart .goal { stroke: var(--gold); stroke-width: 1.5; stroke-dasharray: 5 4; }
+.chart .goal-t { fill: var(--gold); font-size: 10.5px; font-weight: 700; }
+.bd-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); row-gap: 10px; }
+.bd-grid > label { min-width: 0; }
+.bd-grid label span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bd-who { padding: 12px; background: var(--surface); }
+.bd-who .seg { padding: 3px; }
+.bd-who .seg button { padding: 9px 0; }
+.bd-how { margin-top: 14px; font-size: 13px; color: var(--muted); }
+.bd-how summary { cursor: pointer; font-weight: 700; color: var(--accent-text); }
+.bd-how ul { margin: 8px 0; padding-left: 18px; line-height: 1.5; }
+.bd-how p { margin: 0; }
+@media (max-width: 359px) { #tabs a { font-size: 9.5px; } #tabs a svg { width: 22px; height: 22px; } }

@@ -79,6 +79,7 @@ const I = {
   download: '<svg viewBox="0 0 24 24"><path d="M12 4.5v11M7 11l5 5 5-5M5 19.5h14"/></svg>',
   folder: '<svg viewBox="0 0 24 24"><path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/></svg>',
   sparkle: '<svg viewBox="0 0 24 24"><path d="M11 3.5l1.9 5 5 1.9-5 1.9-1.9 5-1.9-5-5-1.9 5-1.9z"/><path d="M18.5 14.5l.9 2.1 2.1.9-2.1.9-.9 2.1-.9-2.1-2.1-.9 2.1-.9z"/></svg>',
+  body: '<svg viewBox="0 0 24 24"><circle cx="12" cy="4.6" r="2.1"/><path d="M4.5 8.6c2.6.9 5 1.3 7.5 1.3s4.9-.4 7.5-1.3M12 9.9v5.4M12 15.3l-3.4 6.2M12 15.3l3.4 6.2"/></svg>',
   palette: '<svg viewBox="0 0 24 24"><path d="M12 3.5a8.5 8.5 0 0 0 0 17c1.2 0 1.8-.8 1.8-1.7 0-1.3-1.2-1.6-1.2-2.8 0-1 .8-1.7 1.8-1.7h2.1a4 4 0 0 0 4-4c0-3.8-3.8-6.8-8.5-6.8z"/><circle cx="7.8" cy="11" r="1"/><circle cx="10.5" cy="7.5" r="1"/><circle cx="15" cy="7.8" r="1"/></svg>'
 };
 
@@ -86,7 +87,7 @@ const I = {
 function blank() {
   return {
     v: 1, settings: { rest: 90, sound: true, theme: 'auto', accent: 'limao', glass: true },
-    custom: [], programs: [], routines: [], sessions: [], active: null, videos: {}, profile: null
+    custom: [], programs: [], routines: [], sessions: [], active: null, videos: {}, profile: null, body: [], bodyGoal: {}
   };
 }
 // Dados antigos (sem programas): as fichas existentes viram o programa "Meu treino"
@@ -144,6 +145,7 @@ function demo(ex) {
     <b class="demo-step s1">1 · Início</b><b class="demo-step s2">2 · Fim</b></div>`;
 }
 function musclesHTML(ex) {
+  if (typeof muscleMapHTML === 'function') return muscleMapHTML(ex);
   if (!ex || !(ex.primary || []).length) return '';
   const tag = (c, p) => `<span class="mtag ${p ? 'p' : ''}">${esc(MUSCLES[c] || c)}</span>`;
   return `<div class="muscles">${ex.primary.map(c => tag(c, true)).join('')}${(ex.secondary || []).map(c => tag(c, false)).join('')}</div>`;
@@ -406,6 +408,7 @@ const routes = [
   [/^#\/programa\/([\w-]+)$/, viewPrograma, 'fichas'],
   [/^#\/modelos$/, viewModelos, 'fichas'],
   [/^#\/modelo\/([\w-]+)$/, viewModelo, 'fichas'],
+  [/^#\/corpo$/, () => typeof viewCorpo === 'function' ? viewCorpo() : viewUpdating(), 'corpo'],
   [/^#\/assistente$/, () => typeof viewAssistente === 'function' ? viewAssistente() : viewUpdating(), 'fichas'],
   [/^#\/exercicios$/, viewExercicios, 'exercicios'],
   [/^#\/exercicio\/([\w-]+)$/, viewExercicio, 'exercicios'],
@@ -817,27 +820,32 @@ function viewExercicio(id) {
   return html;
 }
 
-function chartSVG(points, unit) {
-  if (points.length < 2) return `<div class="empty small" style="padding:18px">Faça este exercício em pelo menos 2 treinos para ver o gráfico.</div>`;
-  const pts = points.slice(-24);
+function chartSVG(points, unit, opts = {}) {
+  const { time = false, goal = null, better = 'up', dec = 1, max = 24, empty } = opts;
+  if (points.length < 2) return `<div class="empty small" style="padding:18px">${empty || 'Faça este exercício em pelo menos 2 treinos para ver o gráfico.'}</div>`;
+  const pts = points.slice(-max);
   const W = 340, H = 180, pl = 40, pr = 12, pt = 14, pb = 26;
-  const vs = pts.map(p => p.v);
+  const vs = pts.map(p => p.v).concat(goal != null ? [goal] : []);
   let lo = Math.min(...vs), hi = Math.max(...vs);
   if (lo === hi) { lo -= 1; hi += 1; }
   const pad = (hi - lo) * 0.12; lo = Math.max(0, lo - pad); hi += pad;
-  const x = i => pl + i * (W - pl - pr) / (pts.length - 1);
+  const t0 = pts[0].t, t1 = pts[pts.length - 1].t;
+  const x = (p, i) => time && t1 > t0 ? pl + (p.t - t0) / (t1 - t0) * (W - pl - pr) : pl + i * (W - pl - pr) / (pts.length - 1);
   const y = v => pt + (1 - (v - lo) / (hi - lo)) * (H - pt - pb);
-  const line = pts.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(p.v).toFixed(1)}`).join('');
-  const area = `${line}L${x(pts.length - 1).toFixed(1)},${H - pb}L${pl},${H - pb}Z`;
+  const line = pts.map((p, i) => `${i ? 'L' : 'M'}${x(p, i).toFixed(1)},${y(p.v).toFixed(1)}`).join('');
+  const area = `${line}L${x(pts[pts.length - 1], pts.length - 1).toFixed(1)},${H - pb}L${pl},${H - pb}Z`;
   const ticks = [lo, (lo + hi) / 2, hi];
-  const grid = ticks.map(v => `<line class="grid" x1="${pl}" x2="${W - pr}" y1="${y(v)}" y2="${y(v)}"/><text x="${pl - 6}" y="${y(v) + 4}" text-anchor="end">${fmt(v, hi - lo < 10 ? 1 : 0)}</text>`).join('');
-  const dots = pts.map((p, i) => `<circle class="pt ${i === pts.length - 1 ? 'last' : ''}" cx="${x(i)}" cy="${y(p.v)}" r="${i === pts.length - 1 ? 4.5 : 3}"/>`).join('');
+  const grid = ticks.map(v => `<line class="grid" x1="${pl}" x2="${W - pr}" y1="${y(v)}" y2="${y(v)}"/><text x="${pl - 6}" y="${y(v) + 4}" text-anchor="end">${fmt(v, hi - lo < 10 ? Math.max(1, dec) : 0)}</text>`).join('');
+  const showAll = pts.length <= 40;
+  const dots = pts.map((p, i) => i === pts.length - 1 || showAll ? `<circle class="pt ${i === pts.length - 1 ? 'last' : ''}" cx="${x(p, i)}" cy="${y(p.v)}" r="${i === pts.length - 1 ? 4.5 : 3}"/>` : '').join('');
+  const goalLine = goal != null ? `<line class="goal" x1="${pl}" x2="${W - pr}" y1="${y(goal)}" y2="${y(goal)}"/><text class="goal-t" x="${W - pr}" y="${y(goal) - 4}" text-anchor="end">meta ${fmt(goal, dec)}</text>` : '';
   const lastV = pts[pts.length - 1].v, firstV = pts[0].v, diff = lastV - firstV;
+  const good = better === 'up' ? diff >= 0 : better === 'down' ? diff <= 0 : false;
   return `<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
-      <div><b style="font-size:24px" class="num">${fmt(lastV)}</b> <span class="muted small">${unit}</span></div>
-      <span class="badge ${diff >= 0 ? 'accent' : ''} num">${diff >= 0 ? '+' : ''}${fmt(diff)} ${unit}</span></div>
+      <div><b style="font-size:24px" class="num">${fmt(lastV, dec)}</b> <span class="muted small">${unit}</span></div>
+      <span class="badge ${good ? 'accent' : ''} num">${diff >= 0 ? '+' : '−'}${fmt(Math.abs(diff), dec)} ${unit}</span></div>
     <svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Gráfico de evolução">
-      ${grid}<path class="area" d="${area}"/><path class="line" d="${line}"/>${dots}
+      ${grid}${goalLine}<path class="area" d="${area}"/><path class="line" d="${line}"/>${dots}
       <text x="${pl}" y="${H - 6}">${dateShort(pts[0].t)}</text><text x="${W - pr}" y="${H - 6}" text-anchor="end">${dateShort(pts[pts.length - 1].t)}</text>
     </svg>`;
 }
@@ -1142,7 +1150,7 @@ function viewAjustes() {
       <a class="row" href="#/modelos"><div class="grow"><div class="name">Modelos de treino prontos</div><div class="sub">PPL, Upper/Lower, ABC, ABCDE, em casa e mais</div></div>${I.chev}</a>
       <button class="row" data-act="wipeData"><div class="grow"><div class="name" style="color:var(--danger)">Apagar todos os dados</div></div></button>
     </div>
-    <p class="small muted" style="margin:10px 4px 0">${S.programs.length} programas · ${S.routines.length} fichas · ${S.sessions.length} treinos · ${S.custom.length} exercícios personalizados. Tudo fica salvo só neste aparelho — exporte um backup de vez em quando.</p>
+    <p class="small muted" style="margin:10px 4px 0">${S.programs.length} programas · ${S.routines.length} fichas · ${S.sessions.length} treinos · ${(S.body || []).length} registros de medidas · ${S.custom.length} exercícios personalizados. Tudo fica salvo só neste aparelho — exporte um backup de vez em quando.</p>
 
     ${standalone ? '' : `<h2 class="section">Instalar no iPhone</h2>
     <div class="card small" style="line-height:1.55">
@@ -1152,8 +1160,9 @@ function viewAjustes() {
       <span class="muted">O app abre em tela cheia, funciona offline e mantém seus dados.</span></div>`}
 
     <div style="text-align:center;margin-top:22px"><button class="link-btn" data-act="checkUpdate">Procurar atualização</button></div>
-    <p class="small muted" style="text-align:center;margin-top:6px">Ficha · versão 1.3<br>
-      Fotos e músculos dos exercícios: <a href="https://github.com/yuhonas/free-exercise-db" target="_blank" rel="noopener" style="text-decoration:underline">free-exercise-db</a> (domínio público)</p>`;
+    <p class="small muted" style="text-align:center;margin-top:6px">Ficha · versão 1.4<br>
+      Fotos e músculos dos exercícios: <a href="https://github.com/yuhonas/free-exercise-db" target="_blank" rel="noopener" style="text-decoration:underline">free-exercise-db</a> (domínio público)<br>
+      Desenho do mapa muscular: <a href="https://github.com/GV79/react-body-highlighter" target="_blank" rel="noopener" style="text-decoration:underline">react-body-highlighter</a> (MIT)</p>`;
 }
 
 function exportData() {
@@ -1183,7 +1192,7 @@ function importData(file) {
       onOk: () => {
         const b = blank();
         migrate(d);
-        S = { ...b, settings: { ...b.settings, ...(d.settings || {}) }, custom: d.custom || [], videos: d.videos || {}, profile: d.profile || null, programs: d.programs, routines: d.routines, sessions: d.sessions.sort((x, y) => y.start - x.start), active: d.active || null };
+        S = { ...b, settings: { ...b.settings, ...(d.settings || {}) }, custom: d.custom || [], videos: d.videos || {}, profile: d.profile || null, body: d.body || [], bodyGoal: d.bodyGoal || {}, programs: d.programs, routines: d.routines, sessions: d.sessions.sort((x, y) => y.start - x.start), active: d.active || null };
         save(); applyLook(); toast('Backup importado'); go('#/hoje');
       }
     });
@@ -1601,6 +1610,7 @@ const ACT = {
 };
 
 if (typeof ASSIST_ACTIONS !== 'undefined') Object.assign(ACT, ASSIST_ACTIONS);
+if (typeof BODY_ACTIONS !== 'undefined') Object.assign(ACT, BODY_ACTIONS);
 
 function backToPicker() {
   renderPicker();
