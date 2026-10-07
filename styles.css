@@ -1382,3 +1382,58 @@ button.pp:active { transform: scale(.97); }
 .rem-meals label { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; color: var(--muted); font-weight: 600; }
 .rem-meals .input.rem-time { width: 100%; }
 .rem-list { padding: 0; }
+
+/* ===== Liquid Glass: movimento com molas (glass.js) =====
+   As curvas --lq-bounce/--lq-spring/--lq-soft são molas de verdade, geradas em linear() pelo glass.js. */
+:root.lq #tabs.liquid .tab-pill { transform: none; animation: none; transition: opacity .2s, background-color .25s, box-shadow .25s; will-change: translate, scale; }
+:root.lq #tabs.liquid a svg { transition: none; }
+:root.lq #tabs.liquid.press a.near { color: var(--accent-text); }
+:root.lq #tabs.liquid.press a.on:not(.near) { color: var(--text); }
+:root.lq[data-glass] #tabs { transition: width var(--lq-spring-d) var(--lq-spring), left var(--lq-spring-d) var(--lq-spring), transform var(--lq-spring-d) var(--lq-spring); }
+:root.lq[data-glass] #dock { transition: bottom var(--lq-spring-d) var(--lq-spring), left var(--lq-spring-d) var(--lq-spring), padding .5s; }
+/* Brilho no ponto tocado */
+.lq-glint {
+  position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: 3; opacity: 0;
+  background: radial-gradient(circle var(--gr, 60px) at var(--gx, 50%) var(--gy, 50%), rgba(255, 255, 255, .5), rgba(255, 255, 255, .16) 45%, rgba(255, 255, 255, 0) 75%);
+  mix-blend-mode: plus-lighter;
+}
+.lq-glint.on { opacity: 1; transition: opacity .1s; }
+.lq-glint.out { opacity: 0; transition: opacity .6s ease-out; }
+:root[data-scheme="light"] .lq-glint { mix-blend-mode: normal; background: radial-gradient(circle var(--gr, 60px) at var(--gx, 50%) var(--gy, 50%), rgba(255, 255, 255, .85), rgba(255, 255, 255, .3) 45%, rgba(255, 255, 255, 0) 75%); }
+/* O crescer e balançar ao tocar vem das molas; tira o afundar fixo */
+:root.lq :is(.btn, .chip, .seg button, .icon-btn, .link-btn, .tpl-banner, .ach-cell):active { transform: none; }
+/* Painel que nasce do botão */
+:root.lq #sheet.morph, :root.lq #sheet.morph.closing { animation: none; }
+/* Sem a sombra enquanto cresce (o recorte cortaria); ela aparece suave no fim */
+:root.lq[data-glass] #sheet { transition: box-shadow .35s ease-out; }
+:root.lq[data-glass] #sheet.morph { box-shadow: inset 0 .5px 0 var(--glass-hi); }
+.morph-src { opacity: 0 !important; transition: opacity .15s; }
+:root.lq[data-glass] #sheet:not(.morph):not(.closing) { animation-duration: var(--lq-spring-d); animation-timing-function: var(--lq-spring); }
+/* Segmentado: seleção que desliza */
+:root.lq .seg { position: relative; }
+:root.lq .seg button { position: relative; z-index: 1; }
+:root.lq .seg button.lq-hold { background: transparent !important; box-shadow: none !important; }
+.lq-seg { position: absolute; z-index: 0; border-radius: 999px; background: var(--seg-on); box-shadow: 0 3px 8px rgba(0, 0, 0, .12), 0 1px 1px rgba(0, 0, 0, .04); pointer-events: none; }
+/* Interruptor: a bolinha vira gota, estica no caminho e balança ao chegar */
+:root.lq[data-glass] .switch i { transition: background-color .3s; }
+:root.lq[data-glass] .switch i::after { transition: transform var(--lq-bounce-d) var(--lq-bounce), scale .35s var(--lq-spring), background-color .25s, box-shadow .25s; }
+:root.lq[data-glass] .switch i.lq-drop::after { animation: lq-drop .6s cubic-bezier(.3, 0, .2, 1); }
+@keyframes lq-drop {
+  0% { scale: 1.22 1.3; background-color: rgba(255, 255, 255, .3); }
+  32% { scale: 1.62 1.08; background-color: rgba(255, 255, 255, .35); }
+  62% { scale: .9 1.1; background-color: #fff; }
+  82% { scale: 1.05 .96; }
+  100% { scale: 1 1; }
+}
+:root[data-glass] .switch i:is(.lq-from-on, .lq-from-off), :root[data-glass] .switch i:is(.lq-from-on, .lq-from-off)::after { transition: none !important; }
+:root[data-glass] .switch i.lq-from-off::after { transform: none !important; }
+:root[data-glass] .switch i.lq-from-on::after { transform: translateX(22px) !important; }
+:root[data-glass] .switch i.lq-from-off { background: color-mix(in srgb, var(--glass-fill) 100%, rgba(120, 120, 128, .1)) !important; }
+:root[data-glass] .switch i.lq-from-on { background: var(--ios-green) !important; }
+/* Avisos e o descanso surgem como gota (do topo, como a Dynamic Island) */
+:root.lq[data-glass] #toast { animation: lq-toast var(--lq-bounce-d) var(--lq-bounce); }
+:root.lq[data-glass] #toast.out { animation: lq-toast-out .3s cubic-bezier(.5, 0, .75, .2) forwards; }
+@keyframes lq-toast { from { scale: .3 .5; translate: 0 -22px; opacity: 0; } }
+@keyframes lq-toast-out { to { scale: .35 .55; translate: 0 -18px; opacity: 0; } }
+:root.lq[data-glass] .dock-bar.in { animation: lq-dock var(--lq-bounce-d) var(--lq-bounce); }
+@keyframes lq-dock { from { scale: .55 .7; translate: 0 26px; opacity: 0; } }

@@ -519,6 +519,7 @@ function openSheet(html, ctx = null, cleanup = null) {
   if (swap) { void sh.offsetWidth; sh.classList.add('swap'); } // troca de conteúdo com o painel aberto
   sh.hidden = false; bd.hidden = false;
   document.documentElement.style.overflow = 'hidden';
+  if (typeof liquidSheetIn === 'function') liquidSheetIn(sh, bd, swap); // Liquid Glass: nasce do botão tocado
 }
 function closeSheet() {
   sheetCtx = null;
@@ -534,6 +535,7 @@ function closeSheet() {
   if (reduceMotion()) { done(); return; }
   sh.classList.add('closing'); bd.classList.add('closing');
   clearTimeout(sheetHideTimer);
+  if (typeof liquidSheetOut === 'function' && liquidSheetOut(sh, bd, done)) return; // volta para o botão
   sheetHideTimer = setTimeout(done, 260);
 }
 // Arrastar o painel para baixo (pela alça ou pelo título) fecha
@@ -673,7 +675,8 @@ function render() {
   const bar = $('#tabs'), prevTi = bar.style.getPropertyValue('--ti');
   bar.style.setProperty('--ti', Math.max(0, ti)); bar.style.setProperty('--tn', tabs.length);
   bar.classList.toggle('no-tab', ti < 0);
-  if (prevTi !== '' && +prevTi !== Math.max(0, ti) && !reduceMotion()) {
+  if (typeof liquidTabs === 'function') liquidTabs(Math.max(0, ti)); // Liquid Glass: a seleção anda com mola (glass.js)
+  if (!bar.classList.contains('liquid') && prevTi !== '' && +prevTi !== Math.max(0, ti) && !reduceMotion()) {
     const pill = $('.tab-pill'); pill.classList.remove('moving'); void pill.offsetWidth; pill.classList.add('moving');
     clearTimeout(render.pillT); render.pillT = setTimeout(() => pill.classList.remove('moving'), 520);
   }
@@ -1601,7 +1604,7 @@ function viewAjustes() {
       <span class="muted">O app abre em tela cheia, funciona offline e mantém seus dados.</span></div>`}
 
     <div style="text-align:center;margin-top:22px"><button class="link-btn" data-act="checkUpdate">Procurar atualização</button></div>
-    <p class="small muted" style="text-align:center;margin-top:6px">Ficha · versão 2.3<br>
+    <p class="small muted" style="text-align:center;margin-top:6px">Ficha · versão 2.4<br>
       Fotos e músculos dos exercícios: <a href="https://github.com/yuhonas/free-exercise-db" target="_blank" rel="noopener" style="text-decoration:underline">free-exercise-db</a> (domínio público)<br>
       Desenho do mapa muscular: <a href="https://github.com/GV79/react-body-highlighter" target="_blank" rel="noopener" style="text-decoration:underline">react-body-highlighter</a> (MIT)<br>
       Alimentos: TACO, 4ª ed. (NEPA/UNICAMP) e <a href="https://world.openfoodfacts.org" target="_blank" rel="noopener" style="text-decoration:underline">Open Food Facts</a> (ODbL)</p>`;
@@ -2334,16 +2337,20 @@ window.addEventListener('scroll', () => glassScroll(false), { passive: true });
     if (i < 0) return;
     scrub = { start: i, i, x: e.clientX, moved: false };
     bar.classList.add('press');
+    if (typeof liquidTabPress === 'function') liquidTabPress(true);
   });
   window.addEventListener('pointermove', e => {
     if (!scrub) return;
     if (Math.abs(e.clientX - scrub.x) > 10) scrub.moved = true;
-    const i = idxAt(e.clientX);
-    if (scrub.moved && i >= 0 && i !== scrub.i) { scrub.i = i; bar.style.setProperty('--ti', i); }
+    if (!scrub.moved) return;
+    const liquid = bar.classList.contains('liquid'), i = idxAt(e.clientX);
+    if (liquid) liquidTabDrag(e.clientX); // a lente segue o dedo
+    if (i >= 0 && i !== scrub.i) { scrub.i = i; if (!liquid) bar.style.setProperty('--ti', i); }
   });
   const end = () => {
     if (!scrub) return;
     bar.classList.remove('press');
+    if (typeof liquidTabPress === 'function') liquidTabPress(false, scrub.moved ? scrub.i : null);
     const { i, start, moved } = scrub; scrub = null;
     if (moved && i !== start) { skipClick = true; setTimeout(() => { skipClick = false; }, 400); location.hash = bar.querySelectorAll('a')[i].getAttribute('href'); }
     else if (moved) bar.style.setProperty('--ti', start);
