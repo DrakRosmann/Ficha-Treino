@@ -225,13 +225,14 @@ function viewCorpo() {
 
   if (all.length) {
     html += `<h2 class="section">Registros <span class="small" style="text-transform:none;letter-spacing:0">${all.length}</span></h2><div class="list">` +
-      all.slice().reverse().map(e => {
+      all.slice().reverse().slice(0, bodyLimit).map(e => {
         const parts = [e.peso != null ? `${fmt(e.peso)} kg` : '', e.gordura != null ? `${fmt(e.gordura)}% gordura` : '', e.musculo != null ? `${fmt(e.musculo)} kg músculo` : '',
           e.cintura != null ? `cintura ${fmt(e.cintura)}` : ''].filter(Boolean);
         const nMed = BODY_FIELDS.filter(f => f[3] === 'med' && e[f[0]] != null).length;
         return `<button class="row" data-act="bodyEdit" data-id="${e.id}"><div class="dot"><span class="num">${new Date(e.t).getDate()}</span></div>
           <div class="grow"><div class="name">${dateLong(e.t)}</div><div class="sub">${parts.join(' · ') || `${nMed} medidas`}${nMed && parts.length ? ` · ${nMed} medidas` : ''}</div></div>${I.chev}</button>`;
-      }).join('') + '</div>';
+      }).join('') + '</div>' +
+      (all.length > bodyLimit ? `<button class="btn block" style="margin-top:12px" data-act="bodyMore">Mostrar registros mais antigos (${all.length - bodyLimit})</button>` : '');
   }
   html += `<p class="small muted" style="margin:14px 4px 0;line-height:1.5">Dica: meça sempre nas mesmas condições — de manhã, em jejum e depois de ir ao banheiro. Variações de 1–2 kg de um dia para o outro são normais (água e alimentação).</p>`;
   return html;
@@ -262,7 +263,9 @@ function bodyForm(entry) {
     </div>`);
 }
 
+let bodyLimit = 30; // registros mostrados (os antigos vêm sob demanda)
 const BODY_ACTIONS = {
+  bodyMore: () => { bodyLimit += 60; rerender(); },
   bodyNew: () => {
     // Se já existe registro de hoje, edita esse
     const today = (S.body || []).find(e => e.t === startOfDay(Date.now()));

@@ -115,9 +115,10 @@ function migrate(d) {
   }
   return d;
 }
+let lastSaved = null; // o texto que este app gravou por último
 function load() {
   try {
-    const raw = localStorage.getItem(KEY);
+    const raw = lastSaved = localStorage.getItem(KEY);
     if (raw) {
       const d = migrate(JSON.parse(raw));
       const b = blank();
@@ -127,12 +128,25 @@ function load() {
   return blank();
 }
 let S = load();
-function save() {
-  try { localStorage.setItem(KEY, JSON.stringify(S)); }
+// Grava no aparelho logo depois do quadro atual (várias mudanças seguidas viram uma gravação só),
+// para não travar animações e digitação; ao sair, minimizar ou recarregar o app, grava na hora.
+let saveTimer = 0;
+function flushSave(ev) {
+  if (!saveTimer) return;
+  clearTimeout(saveTimer); saveTimer = 0;
+  // Ao sair: se os dados gravados foram trocados por fora (outra aba), não sobrescreve com esta cópia
+  if (ev && ev.type && localStorage.getItem(KEY) !== lastSaved) return;
+  try { lastSaved = JSON.stringify(S); localStorage.setItem(KEY, lastSaved); }
   catch (e) { toast('Não foi possível salvar os dados'); }
+}
+function save() {
+  if (!saveTimer) saveTimer = setTimeout(flushSave, 250);
   if (typeof achSoon === 'function') achSoon();
   if (typeof cloudSoon === 'function') cloudSoon();
 }
+window.addEventListener('pagehide', flushSave);
+window.addEventListener('beforeunload', flushSave);
+document.addEventListener('visibilitychange', e => { if (document.hidden) flushSave(e); });
 
 /* ================= Exercícios ================= */
 const EXMAP = new Map(BUILTIN_EXERCISES.map(e => [e.id, e]));
@@ -1212,51 +1226,39 @@ const setType = s => s.warm ? 'warm' : s.t || '';
 const setMark = s => (SET_TYPES.find(t => t[0] === setType(s)) || [])[3];
 
 let justDone = null; // série recém-concluída (anima o ✓)
-function viewTreino() {
-  const pop = justDone; justDone = null;
-  const a = S.active;
-  if (!a) { location.replace('#/hoje'); return null; }
+function workoutStats(a) {
   const total = sum(a.exercises.map(e => e.sets.length));
   const done = sum(a.exercises.map(e => e.sets.filter(s => s.done).length));
   const vol = sum(a.exercises.map(e => sum(e.sets.filter(s => s.done && !s.warm).map(s => e.kind === 'w' ? (num(s.a) || 0) * (num(s.b) || 0) : 0))));
-
-  let html = `<div class="workout-head">
-    <div class="row1">
-      <a class="icon-btn" href="#/hoje" aria-label="Minimizar">${I.down}</a>
-      <div class="wname" data-act="renameWorkout">${esc(a.name)}</div>
-      <button class="btn primary sm" data-act="finishWorkout">Finalizar</button>
-    </div>
-    <div class="meta"><span>⏱ <b class="num" data-elapsed="${a.start}">${clock((Date.now() - a.start) / 1000)}</b></span>
-      <span><b class="num">${done}/${total}</b> séries</span>${vol ? `<span><b class="num">${fmtInt(vol)}</b> kg</span>` : ''}</div>
-    <div class="progress"><i style="width:${total ? done / total * 100 : 0}%"></i></div></div>`;
-
-  if (!a.exercises.length) {
-    html += `<div class="card">${emptyState(I.dumbbell, 'Treino livre', 'Adicione os exercícios conforme for treinando.')}</div>`;
-  }
-
-  a.exercises.forEach((ex, x) => {
-    const K = KINDS[ex.kind];
-    const last = lastSets(ex.exId);
-    const allDone = ex.sets.length && ex.sets.every(s => s.done);
-    const rir = S.settings.rir !== false && (ex.kind === 'w' || ex.kind === 'bw');
-    const head = `<tr><th>Série</th><th>Anterior</th><th>${K.a}</th>${K.b ? `<th>${K.b}</th>` : ''}${rir ? '<th><button class="th-btn" data-act="rirHelp">RIR</button></th>' : ''}<th>✓</th></tr>`;
-    let wn = 0, wi = 0;
-    const rows = ex.sets.map((s, i) => {
-      const ty = setType(s), label = setMark(s) || String(++wn);
-      const ref = s.warm ? null : last[wi++];
-      const prev = ref ? fmtSet(ex.kind, ref) : '—';
-      const inp = f => `<input type="text" inputmode="decimal" value="${esc(s[f])}" placeholder="${esc(placeholder(ex, i, f))}" data-wf="${f}" data-x="${x}" data-s="${i}" aria-label="${f === 'a' ? K.a : K.b} da série ${label}">`;
-      const rirSel = `<select class="rir" data-rir data-x="${x}" data-s="${i}" aria-label="RIR da série ${label}">${['', 0, 1, 2, 3, 4, 5].map(v => `<option value="${v}" ${String(s.rir ?? '') === String(v) ? 'selected' : ''}>${v === '' ? '–' : v === 5 ? '5+' : v}</option>`).join('')}</select>`;
-      return `<tr class="${s.done ? 'done' : ''} ${pop === `${x}-${i}` ? 'pop' : ''}">
+  return { total, done, vol, p: total ? done / total : 0 };
+}
+function workoutMetaHTML(a, st) {
+  return `<span>⏱ <b class="num" data-elapsed="${a.start}">${clock((Date.now() - a.start) / 1000)}</b></span>
+      <span><b class="num">${st.done}/${st.total}</b> séries</span>${st.vol ? `<span><b class="num">${fmtInt(st.vol)}</b> kg</span>` : ''}`;
+}
+function exCardHTML(a, ex, x, pop) {
+  const K = KINDS[ex.kind];
+  const last = lastSets(ex.exId);
+  const allDone = ex.sets.length && ex.sets.every(s => s.done);
+  const rir = S.settings.rir !== false && (ex.kind === 'w' || ex.kind === 'bw');
+  const head = `<tr><th>Série</th><th>Anterior</th><th>${K.a}</th>${K.b ? `<th>${K.b}</th>` : ''}${rir ? '<th><button class="th-btn" data-act="rirHelp">RIR</button></th>' : ''}<th>✓</th></tr>`;
+  let wn = 0, wi = 0;
+  const rows = ex.sets.map((s, i) => {
+    const ty = setType(s), label = setMark(s) || String(++wn);
+    const ref = s.warm ? null : last[wi++];
+    const prev = ref ? fmtSet(ex.kind, ref) : '—';
+    const inp = f => `<input type="text" inputmode="decimal" value="${esc(s[f])}" placeholder="${esc(placeholder(ex, i, f))}" data-wf="${f}" data-x="${x}" data-s="${i}" aria-label="${f === 'a' ? K.a : K.b} da série ${label}">`;
+    const rirSel = `<select class="rir" data-rir data-x="${x}" data-s="${i}" aria-label="RIR da série ${label}">${['', 0, 1, 2, 3, 4, 5].map(v => `<option value="${v}" ${String(s.rir ?? '') === String(v) ? 'selected' : ''}>${v === '' ? '–' : v === 5 ? '5+' : v}</option>`).join('')}</select>`;
+    return `<tr class="${s.done ? 'done' : ''} ${pop === `${x}-${i}` ? 'pop' : ''}">
         <td><button class="setno ${ty}" data-act="setMenu" data-x="${x}" data-s="${i}" aria-label="Tipo da série ${label}">${label}</button></td>
         <td class="prev num">${prev}</td>
         <td>${inp('a')}</td>${K.b ? `<td>${inp('b')}</td>` : ''}${rir ? `<td class="rirc">${s.warm ? '' : rirSel}</td>` : ''}
         <td><button class="check" data-act="toggleSet" data-x="${x}" data-s="${i}" aria-label="Concluir série">${I.check}</button></td></tr>`;
-    }).join('');
-    const sg = typeof suggestionFor === 'function' && !allDone ? suggestionFor(ex) : null;
-    const targetTxt = [ex.sets.filter(s => !s.warm).length + ' × ' + (ex.target || '—') + (ex.kind === 's' ? 's' : ex.kind === 'c' ? ' min' : ''), `descanso ${fmtRest(ex.rest)}`].join(' · ');
-    const ssi = ssInfo(a.exercises, x);
-    html += `<div class="ex-card ${allDone ? 'complete' : ''} ${allDone && pop && pop.split('-')[0] === String(x) ? 'just-complete' : ''} ${ssi ? `in-ss ${ssi.pos === 1 ? 'ss-first' : ''} ${ssi.pos === ssi.size ? 'ss-last' : ''}` : ''}">
+  }).join('');
+  const sg = typeof suggestionFor === 'function' && !allDone ? suggestionFor(ex) : null;
+  const targetTxt = [ex.sets.filter(s => !s.warm).length + ' × ' + (ex.target || '—') + (ex.kind === 's' ? 's' : ex.kind === 'c' ? ' min' : ''), `descanso ${fmtRest(ex.rest)}`].join(' · ');
+  const ssi = ssInfo(a.exercises, x);
+  return `<div class="ex-card ${allDone ? 'complete' : ''} ${allDone && pop && pop.split('-')[0] === String(x) ? 'just-complete' : ''} ${ssi ? `in-ss ${ssi.pos === 1 ? 'ss-first' : ''} ${ssi.pos === ssi.size ? 'ss-last' : ''}` : ''}">
       ${ssi && ssi.pos === 1 ? `<div class="ss-head">${ssi.name} ${ssi.letter} · faça uma série de cada, sem descanso, e descanse no fim da rodada</div>` : ''}
       <div class="ex-title"><button class="thumb-btn" data-act="howTo" data-id="${ex.exId}" aria-label="Ver execução">${thumb(getEx(ex.exId))}</button>
         <div class="grow">${ssBadge(ssi)}<a class="name" href="#/exercicio/${ex.exId}">${esc(ex.name)}</a><div class="target num">${targetTxt}</div></div>
@@ -1268,14 +1270,47 @@ function viewTreino() {
         <button class="btn sm" data-act="addSet" data-x="${x}">${I.plus}Série</button>
         ${ex.sets.length > 1 ? `<button class="btn sm" data-act="removeSet" data-x="${x}">Remover série</button>` : ''}
       </div></div>`;
-  });
+}
+function viewTreino() {
+  const pop = justDone; justDone = null;
+  const a = S.active;
+  if (!a) { location.replace('#/hoje'); return null; }
+  const st = workoutStats(a);
+  let html = `<div class="workout-head">
+    <div class="row1">
+      <a class="icon-btn" href="#/hoje" aria-label="Minimizar">${I.down}</a>
+      <div class="wname" data-act="renameWorkout">${esc(a.name)}</div>
+      <button class="btn primary sm" data-act="finishWorkout">Finalizar</button>
+    </div>
+    <div class="meta">${workoutMetaHTML(a, st)}</div>
+    <div class="progress"><i style="transform:scaleX(${st.p.toFixed(4)})"></i></div></div>`;
 
+  if (!a.exercises.length) {
+    html += `<div class="card">${emptyState(I.dumbbell, 'Treino livre', 'Adicione os exercícios conforme for treinando.')}</div>`;
+  }
+  html += a.exercises.map((ex, x) => exCardHTML(a, ex, x, pop)).join('');
   html += `<div class="stack" style="margin-top:6px">
     <button class="btn block" data-act="addToWorkout">${I.plus}Adicionar exercício</button>
     <label class="field" style="margin-top:14px"><span>Anotações do treino</span>
       <textarea class="input" data-wnotes placeholder="Como foi o treino? Energia, dores, ajustes…">${esc(a.notes)}</textarea></label>
     <button class="btn danger block" data-act="discardWorkout">Descartar treino</button></div>`;
   return html;
+}
+// Marcar série: atualiza só o cabeçalho e o card do exercício (redesenhar a tela inteira travava a animação do ✓)
+function patchWorkout(xs) {
+  const view = $('#view'), a = S.active, head = view.querySelector('.workout-head');
+  const cards = view.querySelectorAll(':scope > .ex-card');
+  if (location.hash !== '#/treino' || !a || !head || cards.length !== a.exercises.length) { rerender(); return; }
+  const pop = justDone; justDone = null;
+  const st = workoutStats(a);
+  head.querySelector('.meta').innerHTML = workoutMetaHTML(a, st);
+  head.querySelector('.progress i').style.transform = `scaleX(${st.p.toFixed(4)})`;
+  for (const x of new Set(xs)) {
+    const t = document.createElement('template');
+    t.innerHTML = exCardHTML(a, a.exercises[x], x, pop);
+    cards[x].replaceWith(t.content);
+  }
+  renderDock();
 }
 
 function startRest(sec) {
@@ -1487,8 +1522,9 @@ function viewHistorico() {
   if (typeof achHistHTML === 'function') html += achHistHTML();
   if (typeof volumeHTML === 'function') html += volumeHTML();
 
+  // Mostra os mais recentes; os antigos vêm sob demanda (desenhar centenas de linhas travava a troca de aba)
   let month = '';
-  for (const s of S.sessions) {
+  for (const s of S.sessions.slice(0, histLimit)) {
     const d = new Date(s.start), m = `${MONTH[d.getMonth()]} ${d.getFullYear()}`;
     if (m !== month) { html += `${month ? '</div>' : ''}<h2 class="section">${m}</h2><div class="list">`; month = m; }
     const vol = sessVolume(s);
@@ -1497,8 +1533,12 @@ function viewHistorico() {
       <div class="grow"><div class="name">${esc(s.name)}${(s.prs || []).length ? ` <span class="badge gold">${s.prs.length} PR</span>` : ''}</div>
       <div class="sub">${DAY[d.getDay()]} ${timeHM(s.start)} · ${fmtDur(s.end - s.start)} · ${sessSetCount(s)} séries${vol ? ` · ${fmtInt(vol)} kg` : ''}</div></div>${I.chev}</a>`;
   }
-  return html + '</div>';
+  html += '</div>';
+  const more = S.sessions.length - histLimit;
+  if (more > 0) html += `<button class="btn block" style="margin-top:12px" data-act="histMore">Mostrar treinos mais antigos (${more})</button>`;
+  return html;
 }
+let histLimit = 40;
 
 function viewSessao(id) {
   const s = S.sessions.find(x => x.id === id);
@@ -1606,7 +1646,7 @@ function viewAjustes() {
       <span class="muted">O app abre em tela cheia, funciona offline e mantém seus dados.</span></div>`}
 
     <div style="text-align:center;margin-top:22px"><button class="link-btn" data-act="checkUpdate">Procurar atualização</button></div>
-    <p class="small muted" style="text-align:center;margin-top:6px">Ficha · versão 2.5.2<br>
+    <p class="small muted" style="text-align:center;margin-top:6px">Ficha · versão 2.6<br>
       Fotos e músculos dos exercícios: <a href="https://github.com/yuhonas/free-exercise-db" target="_blank" rel="noopener" style="text-decoration:underline">free-exercise-db</a> (domínio público)<br>
       Desenho do mapa muscular: <a href="https://github.com/GV79/react-body-highlighter" target="_blank" rel="noopener" style="text-decoration:underline">react-body-highlighter</a> (MIT)<br>
       Alimentos: TACO, 4ª ed. (NEPA/UNICAMP) e <a href="https://world.openfoodfacts.org" target="_blank" rel="noopener" style="text-decoration:underline">Open Food Facts</a> (ODbL)</p>`;
@@ -1957,7 +1997,7 @@ const ACT = {
   // Treino ativo
   toggleSet: el => {
     const ex = S.active.exercises[+el.dataset.x], i = +el.dataset.s, s = ex.sets[i];
-    if (s.done) { s.done = false; save(); rerender(); return; }
+    if (s.done) { s.done = false; save(); patchWorkout([+el.dataset.x]); return; }
     const K = KINDS[ex.kind];
     for (const f of ['a', 'b']) if (s[f] === '' && (f === 'a' || K.b)) s[f] = placeholder(ex, i, f);
     const need = ex.kind === 'w' || ex.kind === 'bw' ? 'b' : 'a';
@@ -1980,7 +2020,7 @@ const ACT = {
       while (k <= ssi.end && !pending(k)) k++;
       const goTo = k <= ssi.end ? k : [...Array(ssi.size).keys()].map(j => ssi.start + j).find(pending);
       if (k > ssi.end) startRest(ex.rest);
-      save(); rerender();
+      save(); patchWorkout([x]);
       if (goTo != null) {
         const card = document.querySelectorAll('.ex-card')[goTo];
         if (card) card.scrollIntoView({ behavior: reduceMotion() ? 'auto' : 'smooth', block: 'center' });
@@ -1989,7 +2029,7 @@ const ACT = {
       return;
     }
     if (!(next && next.t === 'drop' && !next.done)) startRest(ex.rest); // drop set vem sem descanso
-    save(); rerender();
+    save(); patchWorkout([x]);
   },
   setMenu: el => {
     const x = +el.dataset.x, i = +el.dataset.s, ex = S.active.exercises[x], cur = setType(ex.sets[i]);
@@ -2139,6 +2179,7 @@ const ACT = {
   downloadPhotos: () => downloadPhotos(),
 
   // Histórico
+  histMore: () => { histLimit += 60; rerender(); },
   sessionMenu: el => {
     openSheet(`${sheetHead('Treino')}<div class="sheet-body"><div class="list">
       <button class="row" data-act="renameSession" data-id="${el.dataset.id}"><div class="grow name">Renomear</div></button>
@@ -2319,7 +2360,8 @@ function glassScroll(reset) {
   else if (d > 8 && y > 120) setTabsMini(true);
   if (Math.abs(d) > 8) lastScrollY = y;
 }
-window.addEventListener('scroll', () => glassScroll(false), { passive: true });
+let glassScrollRaf = 0; // no máximo uma vez por quadro
+window.addEventListener('scroll', () => { if (!glassScrollRaf) glassScrollRaf = requestAnimationFrame(() => { glassScrollRaf = 0; glassScroll(false); }); }, { passive: true });
 (() => {
   const bar = $('#tabs');
   let scrub = null, skipClick = false;
