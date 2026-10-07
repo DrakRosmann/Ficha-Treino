@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Ficha — Treinos</title>
+  <meta name="description" content="Monte suas fichas de treino e registre cargas, séries e evolução.">
+  <meta name="theme-color" content="#0E1013" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#F3F4F1" media="(prefers-color-scheme: light)">
+
+  <!-- iOS: abre em tela cheia quando adicionado à Tela de Início -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Ficha">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="format-detection" content="telephone=no">
+
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app">
+    <main id="view" aria-live="polite"></main>
+
+    <!-- Barra do treino em andamento / descanso -->
+    <div id="dock"></div>
+
+    <nav id="tabs" aria-label="Navegação principal">
+      <a href="#/hoje" data-tab="hoje">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11.5 12 5l8 6.5V20a1 1 0 0 1-1 1h-4.5v-6h-5v6H5a1 1 0 0 1-1-1z"/></svg>
+        <span>Hoje</span>
+      </a>
+      <a href="#/fichas" data-tab="fichas">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3.5" width="14" height="17" rx="2"/><path d="M9 3.5V2.5h6v1M8.5 9h7M8.5 13h7M8.5 17h4"/></svg>
+        <span>Fichas</span>
+      </a>
+      <a href="#/exercicios" data-tab="exercicios">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12h2M19.5 12h2M8 12h8"/><rect x="4.5" y="7.5" width="3.5" height="9" rx="1"/><rect x="16" y="7.5" width="3.5" height="9" rx="1"/></svg>
+        <span>Exercícios</span>
+      </a>
+      <a href="#/historico" data-tab="historico">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 19.5h17"/><path d="M6 16l4-5 3.5 3 5-7"/></svg>
+        <span>Histórico</span>
+      </a>
+      <a href="#/ajustes" data-tab="ajustes">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>
+        <span>Ajustes</span>
+      </a>
+    </nav>
+  </div>
+
+  <div id="sheet-backdrop" hidden></div>
+  <section id="sheet" role="dialog" aria-modal="true" hidden></section>
+  <div id="toast" role="status" hidden></div>
+
+  <script src="exercises.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
