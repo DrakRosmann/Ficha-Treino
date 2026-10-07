@@ -86,7 +86,7 @@ const I = {
 /* ================= Estado ================= */
 function blank() {
   return {
-    v: 1, settings: { rest: 90, sound: true, theme: 'auto', accent: 'limao', style: 'glass', keepAwake: true, iosTimer: false, timerShortcut: 'Descanso Ficha' },
+    v: 1, settings: { rest: 90, sound: true, theme: 'auto', accent: 'limao', style: 'auto', styleAuto: true, keepAwake: true, iosTimer: false, timerShortcut: 'Descanso Ficha' },
     custom: [], programs: [], routines: [], sessions: [], active: null, videos: {}, profile: null, body: [], bodyGoal: {}
   };
 }
@@ -102,9 +102,9 @@ function migrate(d) {
   }
   if (d.settings) {
     delete d.settings.lockTimer; // opção antiga (descanso por áudio), removida
-    // "Efeito vidro" (liga/desliga) virou o estilo visual: clássico, Liquid Glass ou Material You
-    if (!d.settings.style && 'glass' in d.settings) d.settings.style = d.settings.glass ? 'glass' : 'classic';
-    delete d.settings.glass;
+    delete d.settings.glass; // "Efeito vidro" (liga/desliga) virou a escolha de estilo
+    // O estilo passou a seguir o aparelho (Automático) — aplicado uma vez; a escolha manual continua em Ajustes
+    if (!d.settings.styleAuto) { d.settings.style = 'auto'; d.settings.styleAuto = true; }
   }
   return d;
 }
@@ -319,17 +319,31 @@ const ACCENTS = [
   { id: 'mono', name: 'Grafite', dark: ['#F2F3EF', '#0E1013', '#F2F3EF'], light: ['#15181C', '#FFFFFF', '#15181C'] }
 ];
 const THEMES = [['auto', 'Automático'], ['light', 'Claro'], ['dark', 'Escuro'], ['black', 'Preto']];
+// [id, rótulo curto, nome, descrição]
 const STYLES = [
-  ['classic', 'Clássico', 'Visual sólido e simples, sem transparências'],
-  ['glass', 'Liquid Glass', 'Barra flutuante e painéis translúcidos, no estilo do iOS 26'],
-  ['material', 'Material You', 'Estilo do Android: cores tonais geradas a partir da cor de destaque, formas arredondadas e efeito de toque']
+  ['auto', 'Automático', 'Automático', 'Segue o aparelho: Liquid Glass no iPhone e iPad, Material You no Android e Clássico nos demais'],
+  ['classic', 'Clássico', 'Clássico', 'Visual sólido e simples, sem transparências'],
+  ['glass', 'Glass', 'Liquid Glass', 'Barra flutuante e painéis translúcidos, no estilo do iOS 26'],
+  ['material', 'Material', 'Material You', 'No estilo do Android, com cores tonais geradas a partir da cor de destaque, formas arredondadas e efeito de toque']
 ];
+// Estilo nativo de cada sistema (o mesmo teste está no index.html, para aplicar antes do app carregar)
+function deviceStyle() {
+  const ua = navigator.userAgent || '', plat = (navigator.userAgentData && navigator.userAgentData.platform) || '';
+  if (/android/i.test(ua) || /android/i.test(plat)) return 'material';
+  // iPadOS se apresenta como Mac: diferencia pela tela de toque
+  if (/iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) return 'glass';
+  return 'classic';
+}
 const lightMQ = matchMedia('(prefers-color-scheme: light)');
 function schemeNow() {
   const t = S.settings.theme;
   return t === 'light' || (t === 'auto' && lightMQ.matches) ? 'light' : 'dark';
 }
-function styleNow() { return STYLES.some(x => x[0] === S.settings.style) ? S.settings.style : 'glass'; }
+// Estilo em uso: o escolhido em Ajustes ou, no Automático, o do aparelho
+function styleNow() {
+  const v = S.settings.style;
+  return v !== 'auto' && STYLES.some(x => x[0] === v) ? v : deviceStyle();
+}
 function accentNow() { return ACCENTS.find(x => x.id === S.settings.accent) || ACCENTS[0]; }
 function accentVars(scheme) {
   const a = accentNow()[scheme];
@@ -1275,14 +1289,17 @@ function viewSessao(id) {
 function viewAjustes() {
   const standalone = window.navigator.standalone || matchMedia('(display-mode: standalone)').matches;
   const scheme = schemeNow(), style = styleNow();
+  const chosen = STYLES.some(x => x[0] === S.settings.style) ? S.settings.style : 'auto';
   return `<div class="top"></div><h1 class="title">Ajustes</h1>
     <h2 class="section">Aparência</h2>
     <div class="card look">
       <div class="look-label">Tema</div>
       <div class="seg" role="radiogroup" aria-label="Tema">${THEMES.map(([v, l]) => `<button class="${S.settings.theme === v ? 'on' : ''}" data-act="setTheme" data-v="${v}" role="radio" aria-checked="${S.settings.theme === v}">${l}</button>`).join('')}</div>
       <div class="look-label">Estilo</div>
-      <div class="seg seg3" role="radiogroup" aria-label="Estilo">${STYLES.map(([v, l]) => `<button class="${style === v ? 'on' : ''}" data-act="setStyle" data-v="${v}" role="radio" aria-checked="${style === v}">${l}</button>`).join('')}</div>
-      <p class="small muted look-desc">${STYLES.find(x => x[0] === style)[2]}</p>
+      <div class="seg" role="radiogroup" aria-label="Estilo">${STYLES.map(([v, l, name]) => `<button class="${chosen === v ? 'on' : ''}" data-act="setStyle" data-v="${v}" role="radio" aria-checked="${chosen === v}" aria-label="${name}">${l}</button>`).join('')}</div>
+      <p class="small muted look-desc">${chosen === 'auto'
+        ? `${STYLES[0][3]}. Neste aparelho: <b>${STYLES.find(x => x[0] === style)[2]}</b>.`
+        : `<b>${STYLES.find(x => x[0] === chosen)[2]}:</b> ${STYLES.find(x => x[0] === chosen)[3].replace(/^./, c => c.toLowerCase())}.`}</p>
       <div class="look-label">${style === 'material' ? 'Cor (a paleta é gerada a partir dela)' : 'Cor de destaque'}</div>
       <div class="swatches" role="radiogroup" aria-label="Cor de destaque">${ACCENTS.map(a => {
         const on = (S.settings.accent || 'limao') === a.id;
@@ -1337,7 +1354,7 @@ function viewAjustes() {
       <span class="muted">O app abre em tela cheia, funciona offline e mantém seus dados.</span></div>`}
 
     <div style="text-align:center;margin-top:22px"><button class="link-btn" data-act="checkUpdate">Procurar atualização</button></div>
-    <p class="small muted" style="text-align:center;margin-top:6px">Ficha · versão 1.7<br>
+    <p class="small muted" style="text-align:center;margin-top:6px">Ficha · versão 1.8<br>
       Fotos e músculos dos exercícios: <a href="https://github.com/yuhonas/free-exercise-db" target="_blank" rel="noopener" style="text-decoration:underline">free-exercise-db</a> (domínio público)<br>
       Desenho do mapa muscular: <a href="https://github.com/GV79/react-body-highlighter" target="_blank" rel="noopener" style="text-decoration:underline">react-body-highlighter</a> (MIT)</p>`;
 }

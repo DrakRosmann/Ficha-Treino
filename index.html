@@ -22,9 +22,11 @@
   <!-- Aplica tema, cor e estilo salvos antes de desenhar a tela (evita piscar) -->
   <script>
     try {
-      var L = JSON.parse(localStorage.getItem('ficha.look') || '{"theme":"auto","style":"glass"}'), d = document.documentElement;
+      var L = JSON.parse(localStorage.getItem('ficha.look') || '{"theme":"auto"}'), d = document.documentElement;
       var sc = L.theme === 'light' || (L.theme === 'auto' && matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark';
-      var st = L.style || (L.glass ? 'glass' : 'classic');
+      var st = L.style, ua = navigator.userAgent;
+      // Sem estilo salvo: o do aparelho (Android → Material You, iPhone/iPad → Liquid Glass, outros → Clássico)
+      if (!st) st = /android/i.test(ua) ? 'material' : /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) ? 'glass' : 'classic';
       d.setAttribute('data-scheme', sc);
       if (L.theme === 'black') d.setAttribute('data-black', '');
       if (st === 'glass') d.setAttribute('data-glass', '');

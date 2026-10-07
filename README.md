@@ -13,7 +13,7 @@ Funciona no iPhone pela Tela de Início, offline, sem App Store, sem Mac e sem c
 - **Assistente de treino**: você informa objetivo, experiência, dias por semana, tempo por treino, local, peso, altura, idade, grupos prioritários e restrições (joelho, lombar, ombro, punho, quadril, sem impacto, pressão alta) e recebe 3 opções de programa para escolher, com a explicação de cada uma.
   - **Sem IA** (padrão): regras de treino que escolhem a divisão, os exercícios seguros para as restrições, séries, repetições e descanso conforme o objetivo, e cabem no tempo informado. Funciona offline e é grátis.
   - **Com IA (Claude)**: entende observações em texto livre (ex.: “hérnia de disco”). Precisa de internet e de uma chave da API da Anthropic, salva só no aparelho (fica fora do backup). O uso é cobrado pela Anthropic na sua conta.
-- **Aparência**: tema automático, claro, escuro ou preto (OLED), 10 cores de destaque e três estilos:
+- **Aparência**: tema automático, claro, escuro ou preto (OLED), 10 cores de destaque e estilo visual. No **Automático** (padrão), o app identifica o aparelho e usa o estilo nativo: Liquid Glass no iPhone e iPad, Material You no Android e Clássico no computador e nos demais. Também dá para escolher um dos três:
   - **Clássico**: visual sólido, sem transparências.
   - **Liquid Glass**: no estilo do iOS 26, com barra de abas flutuante e painéis translúcidos.
   - **Material You**: no estilo do Android. As cores tonais (fundo, cartões, botões e contêineres) são geradas a partir da cor de destaque, como no Material 3. Tem cantos arredondados, botões em cápsula, barra de navegação com indicador, interruptores e campos do Material, efeito de toque e a fonte Google Sans Flex.
@@ -64,7 +64,7 @@ No Chrome/Firefox use o modo de dispositivo móvel (F12 → ícone de celular) p
 
 ## Atualizar o app
 
-Edite os arquivos, aumente a versão em `sw.js` (`const CACHE = 'ficha-v9'`) e faça `git push`.
+Edite os arquivos, aumente a versão em `sw.js` (`const CACHE = 'ficha-v10'`) e faça `git push`.
 O app procura a versão nova sozinho sempre que é aberto (com internet) e recarrega uma vez quando encontra. Se quiser forçar, use **Ajustes → Procurar atualização**. Os dados não são apagados.
 
 ## Estrutura
