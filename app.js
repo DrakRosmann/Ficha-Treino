@@ -645,6 +645,8 @@ function route() {
       lastHash = h;
       viewAnim = changed;
       const update = () => { render(); if (changed) window.scrollTo(0, 0); };
+      // Liquid Glass: navegação própria no compositor, com a barra de vidro viva (glass.js)
+      if (dir !== 'none' && !reduceMotion() && !document.hidden && typeof liquidNav === 'function' && liquidNav(dir, update)) return;
       if (dir !== 'none' && document.startViewTransition && !reduceMotion() && !document.hidden) {
         document.documentElement.dataset.nav = dir;
         document.startViewTransition(update);
@@ -666,7 +668,7 @@ function render() {
   if (viewAnim) {
     viewAnim = false;
     view.classList.remove('anim'); void view.offsetWidth; view.classList.add('anim');
-    view.classList.toggle('no-vt', !document.startViewTransition);
+    view.classList.toggle('no-vt', !document.startViewTransition && !(typeof liquidOn === 'function' && liquidOn()));
     clearTimeout(render.animT); render.animT = setTimeout(() => view.classList.remove('anim', 'no-vt'), 1400);
   }
   document.body.classList.toggle('in-workout', location.hash === '#/treino');
@@ -1604,7 +1606,7 @@ function viewAjustes() {
       <span class="muted">O app abre em tela cheia, funciona offline e mantém seus dados.</span></div>`}
 
     <div style="text-align:center;margin-top:22px"><button class="link-btn" data-act="checkUpdate">Procurar atualização</button></div>
-    <p class="small muted" style="text-align:center;margin-top:6px">Ficha · versão 2.4<br>
+    <p class="small muted" style="text-align:center;margin-top:6px">Ficha · versão 2.5<br>
       Fotos e músculos dos exercícios: <a href="https://github.com/yuhonas/free-exercise-db" target="_blank" rel="noopener" style="text-decoration:underline">free-exercise-db</a> (domínio público)<br>
       Desenho do mapa muscular: <a href="https://github.com/GV79/react-body-highlighter" target="_blank" rel="noopener" style="text-decoration:underline">react-body-highlighter</a> (MIT)<br>
       Alimentos: TACO, 4ª ed. (NEPA/UNICAMP) e <a href="https://world.openfoodfacts.org" target="_blank" rel="noopener" style="text-decoration:underline">Open Food Facts</a> (ODbL)</p>`;
