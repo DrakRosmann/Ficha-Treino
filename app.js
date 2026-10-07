@@ -164,6 +164,13 @@ const ytUrl = q => 'https://www.youtube.com/results?search_query=' + encodeURICo
 function thumb(ex) {
   return `<span class="thumb">${I.dumbbell}${ex && ex.img ? `<img src="img/thumb/${ex.img}.webp" alt="" loading="lazy" decoding="async" onerror="this.remove()">` : ''}</span>`;
 }
+// Foto grande da execução (fichas e treino): quadrada, alternando a posição inicial e a final.
+// Usa a foto em alta (as duas posições lado a lado); a miniatura pequena ficaria borrada.
+function exPic(ex, i = 0) {
+  if (!ex || !ex.img) return `<span class="xpic none">${I.dumbbell}</span>`;
+  const src = `img/ex/${ex.img}.webp`;
+  return `<span class="xpic" style="--d:${(-(i % 4) * 0.8).toFixed(1)}s">${I.dumbbell}<img src="${src}" alt="" loading="lazy" decoding="async" onerror="this.parentNode.classList.add('none')"><img class="f2" src="${src}" alt="" loading="lazy" decoding="async"></span>`;
+}
 // Foto animada alternando posição inicial e final
 function demo(ex) {
   if (!ex || !ex.img) return `<div class="demo off"><div class="demo-off">${I.dumbbell}<span>Sem foto para este exercício.<br>Veja um vídeo abaixo.</span></div></div>`;
@@ -947,7 +954,7 @@ function viewFicha(id) {
     const ssi = ssInfo(r.items, i), linked = it.ss && r.items[i + 1] && r.items[i + 1].ss === it.ss;
     const link = i < r.items.length - 1 ? `<button class="ss-link ${linked ? 'on' : ''}" data-act="itemSS" data-i="${i}" aria-label="${linked ? 'Separar' : 'Juntar em supersérie'}">${I.link}<span>${linked ? 'Em supersérie · separar' : 'Juntar em supersérie'}</span></button>` : '';
     return `${ssi && ssi.pos === 1 ? `<div class="ss-head">${ssi.name} ${ssi.letter} · sem descanso entre os exercícios; o descanso do último vale para a rodada</div>` : ''}<div class="card ${ssi ? `in-ss ${ssi.pos === 1 ? 'ss-first' : ''} ${ssi.pos === ssi.size ? 'ss-last' : ''}` : ''}">
-      <div class="item-head"><button class="thumb-btn" data-act="howTo" data-id="${it.exId}" aria-label="Ver execução">${thumb(ex)}</button>
+      <div class="item-head"><button class="thumb-btn" data-act="howTo" data-id="${it.exId}" aria-label="Ver execução">${exPic(ex, i)}</button>
         <div class="grow">${ssBadge(ssi)}<div class="name">${i + 1}. ${esc(exName(it.exId))}</div>
         <div class="small muted">${esc(ex ? `${ex.group} · ${ex.equip}` : '')}</div></div>
         <div class="item-tools">
@@ -1260,7 +1267,7 @@ function exCardHTML(a, ex, x, pop) {
   const ssi = ssInfo(a.exercises, x);
   return `<div class="ex-card ${allDone ? 'complete' : ''} ${allDone && pop && pop.split('-')[0] === String(x) ? 'just-complete' : ''} ${ssi ? `in-ss ${ssi.pos === 1 ? 'ss-first' : ''} ${ssi.pos === ssi.size ? 'ss-last' : ''}` : ''}">
       ${ssi && ssi.pos === 1 ? `<div class="ss-head">${ssi.name} ${ssi.letter} · faça uma série de cada, sem descanso, e descanse no fim da rodada</div>` : ''}
-      <div class="ex-title"><button class="thumb-btn" data-act="howTo" data-id="${ex.exId}" aria-label="Ver execução">${thumb(getEx(ex.exId))}</button>
+      <div class="ex-title"><button class="thumb-btn" data-act="howTo" data-id="${ex.exId}" aria-label="Ver execução">${exPic(getEx(ex.exId), x)}</button>
         <div class="grow">${ssBadge(ssi)}<a class="name" href="#/exercicio/${ex.exId}">${esc(ex.name)}</a><div class="target num">${targetTxt}</div></div>
         <button class="icon-btn" data-act="exMenu" data-x="${x}" aria-label="Opções do exercício" style="margin:-8px -6px 0 0">${I.more}</button></div>
       ${ex.note ? `<div class="ex-note">${esc(ex.note)}</div>` : ''}
@@ -1646,7 +1653,7 @@ function viewAjustes() {
       <span class="muted">O app abre em tela cheia, funciona offline e mantém seus dados.</span></div>`}
 
     <div style="text-align:center;margin-top:22px"><button class="link-btn" data-act="checkUpdate">Procurar atualização</button></div>
-    <p class="small muted" style="text-align:center;margin-top:6px">Ficha · versão 2.6<br>
+    <p class="small muted" style="text-align:center;margin-top:6px">Ficha · versão 2.7<br>
       Fotos e músculos dos exercícios: <a href="https://github.com/yuhonas/free-exercise-db" target="_blank" rel="noopener" style="text-decoration:underline">free-exercise-db</a> (domínio público)<br>
       Desenho do mapa muscular: <a href="https://github.com/GV79/react-body-highlighter" target="_blank" rel="noopener" style="text-decoration:underline">react-body-highlighter</a> (MIT)<br>
       Alimentos: TACO, 4ª ed. (NEPA/UNICAMP) e <a href="https://world.openfoodfacts.org" target="_blank" rel="noopener" style="text-decoration:underline">Open Food Facts</a> (ODbL)</p>`;
