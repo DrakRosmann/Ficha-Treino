@@ -1,6 +1,8 @@
 // Service worker: deixa o app funcionando offline.
 // Ao publicar uma nova versão, aumente o número em CACHE para forçar a atualização.
-const CACHE = 'ficha-v1';
+const CACHE = 'ficha-v2';
+// Fotos dos exercícios: cache separado, que sobrevive às atualizações do app (mesmo nome em app.js).
+const IMG_CACHE = 'ficha-img-v1';
 const ASSETS = [
   './',
   './index.html',
@@ -20,14 +22,25 @@ self.addEventListener('install', e => {
 self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys()
-      .then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
+      .then(keys => Promise.all(keys.filter(k => k !== CACHE && k !== IMG_CACHE).map(k => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
 
-// Rede primeiro (pega atualizações quando há internet), cache como reserva offline.
 self.addEventListener('fetch', e => {
-  if (e.request.method !== 'GET' || new URL(e.request.url).origin !== location.origin) return;
+  const url = new URL(e.request.url);
+  if (e.request.method !== 'GET' || url.origin !== location.origin) return;
+
+  // Fotos não mudam: cache primeiro, rede só na primeira vez.
+  if (url.pathname.includes('/img/')) {
+    e.respondWith(caches.open(IMG_CACHE).then(c => c.match(e.request).then(hit => hit || fetch(e.request).then(res => {
+      if (res.ok) c.put(e.request, res.clone());
+      return res;
+    }))));
+    return;
+  }
+
+  // Rede primeiro (pega atualizações quando há internet), cache como reserva offline.
   e.respondWith(
     fetch(e.request)
       .then(res => {
