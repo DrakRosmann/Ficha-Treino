@@ -92,7 +92,7 @@ function blank() {
     v: 1, settings: { rest: 90, sound: true, theme: 'auto', accent: 'limao', style: 'auto', styleAuto: true, keepAwake: true, iosTimer: false, timerShortcut: 'Descanso Ficha',
       progression: true, rir: true, bar: 20, lastBackup: 0, backupSnooze: 0 },
     custom: [], programs: [], routines: [], sessions: [], active: null, videos: {}, profile: null, body: [], bodyGoal: {},
-    food: { days: {}, custom: [], fav: [], recent: [], goal: null, tdee: null }
+    food: { days: {}, custom: [], fav: [], recent: [], goal: null, tdee: null }, photos: []
   };
 }
 // Dados antigos (sem programas): as fichas existentes viram o programa "Meu treino"
@@ -511,6 +511,7 @@ function openSheet(html, ctx = null, cleanup = null) {
   sh.classList.remove('closing', 'swap'); bd.classList.remove('closing');
   sh.style.transform = ''; sh.style.transition = ''; bd.style.opacity = '';
   sh.innerHTML = '<div class="grab"></div>' + html;
+  if (typeof hydrateProgressPhotos === 'function') hydrateProgressPhotos(sh);
   if (swap) { void sh.offsetWidth; sh.classList.add('swap'); } // troca de conteúdo com o painel aberto
   sh.hidden = false; bd.hidden = false;
   document.documentElement.style.overflow = 'hidden';
@@ -605,6 +606,7 @@ const routes = [
   [/^#\/modelo\/([\w-]+)$/, viewModelo, 'fichas'],
   [/^#\/corpo$/, () => typeof viewCorpo === 'function' ? viewCorpo() : viewUpdating(), 'corpo'],
   [/^#\/assistente$/, () => typeof viewAssistente === 'function' ? viewAssistente() : viewUpdating(), 'fichas'],
+  [/^#\/fotos$/, () => typeof viewFotos === 'function' ? viewFotos() : viewUpdating(), 'corpo'],
   [/^#\/dieta$/, () => typeof viewDieta === 'function' ? viewDieta() : viewUpdating(), 'dieta'],
   [/^#\/exercicios$/, viewExercicios, 'fichas'],
   [/^#\/exercicio\/([\w-]+)$/, viewExercicio, 'fichas'],
@@ -650,6 +652,7 @@ function render() {
   if (html == null) return; // a view redirecionou
   const view = $('#view');
   view.innerHTML = html;
+  if (typeof hydrateProgressPhotos === 'function') hydrateProgressPhotos(view);
   // Animações de entrada (gráficos, anéis, barras) só quando a tela muda, não a cada atualização
   if (viewAnim) {
     viewAnim = false;
@@ -1522,7 +1525,7 @@ function viewAjustes() {
       <a class="row" href="#/modelos"><div class="grow"><div class="name">Modelos de treino prontos</div><div class="sub">PPL, Upper/Lower, ABC, ABCDE, em casa e mais</div></div>${I.chev}</a>
       <button class="row" data-act="wipeData"><div class="grow"><div class="name" style="color:var(--danger)">Apagar todos os dados</div></div></button>
     </div>
-    <p class="small muted" style="margin:10px 4px 0">${S.programs.length} programas · ${S.routines.length} fichas · ${S.sessions.length} treinos · ${(S.body || []).length} registros de medidas · ${S.custom.length} exercícios personalizados. Tudo fica salvo só neste aparelho. Exporte um backup e guarde no iCloud Drive (app Arquivos) para não perder nada se trocar ou perder o celular.</p>
+    <p class="small muted" style="margin:10px 4px 0">${S.programs.length} programas · ${S.routines.length} fichas · ${S.sessions.length} treinos · ${(S.body || []).length} registros de medidas · ${(S.photos || []).length} fotos do progresso · ${S.custom.length} exercícios personalizados. Tudo fica salvo só neste aparelho. Exporte um backup e guarde no iCloud Drive (app Arquivos) para não perder nada se trocar ou perder o celular.</p>
 
     ${standalone ? '' : `<h2 class="section">Instalar no iPhone</h2>
     <div class="card small" style="line-height:1.55">
@@ -1532,7 +1535,7 @@ function viewAjustes() {
       <span class="muted">O app abre em tela cheia, funciona offline e mantém seus dados.</span></div>`}
 
     <div style="text-align:center;margin-top:22px"><button class="link-btn" data-act="checkUpdate">Procurar atualização</button></div>
-    <p class="small muted" style="text-align:center;margin-top:6px">Ficha · versão 2.0<br>
+    <p class="small muted" style="text-align:center;margin-top:6px">Ficha · versão 2.1<br>
       Fotos e músculos dos exercícios: <a href="https://github.com/yuhonas/free-exercise-db" target="_blank" rel="noopener" style="text-decoration:underline">free-exercise-db</a> (domínio público)<br>
       Desenho do mapa muscular: <a href="https://github.com/GV79/react-body-highlighter" target="_blank" rel="noopener" style="text-decoration:underline">react-body-highlighter</a> (MIT)<br>
       Alimentos: TACO, 4ª ed. (NEPA/UNICAMP) e <a href="https://world.openfoodfacts.org" target="_blank" rel="noopener" style="text-decoration:underline">Open Food Facts</a> (ODbL)</p>`;
@@ -1569,11 +1572,28 @@ function prevCopy() {
 function fromBackup(d) {
   const b = blank();
   migrate(d);
-  return { ...b, settings: { ...b.settings, ...(d.settings || {}) }, custom: d.custom || [], videos: d.videos || {}, profile: d.profile || null, body: d.body || [], bodyGoal: d.bodyGoal || {}, food: d.food || b.food, programs: d.programs || [], routines: d.routines, sessions: d.sessions.sort((x, y) => y.start - x.start), active: d.active || null };
+  return { ...b, settings: { ...b.settings, ...(d.settings || {}) }, custom: d.custom || [], videos: d.videos || {}, profile: d.profile || null, body: d.body || [], bodyGoal: d.bodyGoal || {}, food: d.food || b.food, photos: d.photos || [], programs: d.programs || [], routines: d.routines, sessions: d.sessions.sort((x, y) => y.start - x.start), active: d.active || null };
 }
 
-function exportData() {
-  const data = JSON.stringify({ app: 'ficha', exportedAt: new Date().toISOString(), ...S }, null, 2);
+let exportPhotos = null; // fotos do progresso já lidas e convertidas (o compartilhar precisa sair direto do toque)
+function exportData(withPhotos) {
+  const n = (S.photos || []).length;
+  if (n && withPhotos === undefined && typeof ppExportData === 'function') {
+    exportPhotos = null;
+    openSheet(`${sheetHead('Exportar backup')}<div class="sheet-body">
+      <p class="muted" style="margin:0;line-height:1.5">Você tem ${n} foto${n > 1 ? 's' : ''} do progresso. Incluir no arquivo de backup? Com as fotos o arquivo fica maior; sem elas, as fotos continuam só neste aparelho.</p></div>
+      <div class="sheet-foot stack"><button class="btn primary block" id="expPh" data-act="exportData" data-ph="1" disabled>Preparando as fotos…</button>
+      <button class="btn block" data-act="exportData" data-ph="0">Só os dados (sem fotos)</button></div>`);
+    ppExportData().then(d => {
+      exportPhotos = d;
+      const mb = sum(Object.values(d).map(x => x[0].length + x[1].length)) / 1048576, b = $('#expPh');
+      if (b) { b.disabled = false; b.textContent = `Dados e fotos (${fmt(mb, 1)} MB)`; }
+    }).catch(() => { const b = $('#expPh'); if (b) b.textContent = 'Não foi possível ler as fotos'; });
+    return;
+  }
+  const extra = withPhotos && exportPhotos ? { photoData: exportPhotos } : {};
+  if (n) closeSheet();
+  const data = JSON.stringify({ app: 'ficha', exportedAt: new Date().toISOString(), ...S, ...extra }, null, extra.photoData ? 0 : 2);
   const d = new Date();
   const name = `ficha-backup-${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}.json`;
   const file = new File([data], name, { type: 'application/json' });
@@ -1593,13 +1613,17 @@ function importData(file) {
     let d;
     try { d = JSON.parse(reader.result); } catch (e) { toast('Arquivo inválido'); return; }
     if (!d || !Array.isArray(d.routines) || !Array.isArray(d.sessions)) { toast('Esse arquivo não é um backup do Ficha'); return; }
+    const nPh = d.photoData ? Object.keys(d.photoData).length : 0;
     confirmSheet({
-      title: 'Importar backup?', text: `O arquivo tem ${d.routines.length} fichas e ${d.sessions.length} treinos. Os dados atuais deste aparelho serão substituídos.`,
+      title: 'Importar backup?', text: `O arquivo tem ${d.routines.length} fichas e ${d.sessions.length} treinos${nPh ? ` e ${nPh} fotos do progresso` : ''}. Os dados atuais deste aparelho serão substituídos.`,
       ok: 'Importar', danger: true,
       onOk: () => {
         try { localStorage.setItem(PREV_KEY, JSON.stringify({ at: Date.now(), data: S })); } catch (e) { /* sem espaço para a cópia */ }
+        const photoData = d.photoData;
+        delete d.photoData;
         S = fromBackup(d);
         save(); applyLook(); toast('Backup importado — dá para desfazer em Ajustes'); go('#/hoje');
+        if (photoData && typeof ppImportData === 'function') ppImportData(photoData).then(() => { rerender(); toast(`${nPh} fotos importadas`); }).catch(() => toast('Não foi possível importar as fotos'));
       }
     });
   };
@@ -2057,11 +2081,11 @@ const ACT = {
   },
 
   // Ajustes
-  exportData: () => exportData(),
+  exportData: el => exportData(el && el.dataset.ph != null ? el.dataset.ph === '1' : undefined),
   wipeData: () => confirmSheet({
-    title: 'Apagar tudo?', text: 'Fichas, histórico e exercícios personalizados serão apagados deste aparelho. Isso não pode ser desfeito.',
+    title: 'Apagar tudo?', text: 'Fichas, histórico, dieta, fotos do progresso e exercícios personalizados serão apagados deste aparelho. Isso não pode ser desfeito.',
     ok: 'Apagar tudo', danger: true,
-    onOk: () => { S = blank(); save(); localStorage.removeItem(PREV_KEY); applyLook(); if (typeof aiSetKey === 'function') aiSetKey(''); toast('Dados apagados'); go('#/hoje'); }
+    onOk: () => { S = blank(); save(); localStorage.removeItem(PREV_KEY); if (typeof ppWipe === 'function') ppWipe(); applyLook(); if (typeof aiSetKey === 'function') aiSetKey(''); toast('Dados apagados'); go('#/hoje'); }
   }),
   undoImport: () => {
     const p = prevCopy();
@@ -2079,6 +2103,7 @@ if (typeof ASSIST_ACTIONS !== 'undefined') Object.assign(ACT, ASSIST_ACTIONS);
 if (typeof BODY_ACTIONS !== 'undefined') Object.assign(ACT, BODY_ACTIONS);
 if (typeof TOOLS_ACTIONS !== 'undefined') Object.assign(ACT, TOOLS_ACTIONS);
 if (typeof DIET_ACTIONS !== 'undefined') Object.assign(ACT, DIET_ACTIONS);
+if (typeof PHOTO_ACTIONS !== 'undefined') Object.assign(ACT, PHOTO_ACTIONS);
 
 function backToPicker() {
   renderPicker();
@@ -2105,6 +2130,7 @@ document.addEventListener('pointerdown', unlockAudio, { once: true });
 document.addEventListener('input', e => {
   const t = e.target;
   if (typeof dietInput === 'function' && dietInput(t)) return;
+  if (typeof photoInput === 'function' && photoInput(t)) return;
   if (t.dataset.wf && S.active) {
     const ex = S.active.exercises[+t.dataset.x];
     ex.sets[+t.dataset.s][t.dataset.wf] = t.value.replace(/[^\d.,]/g, '');
@@ -2136,6 +2162,7 @@ document.addEventListener('input', e => {
 document.addEventListener('change', e => {
   const t = e.target;
   if (typeof dietChange === 'function' && dietChange(t)) return;
+  if (typeof photoChange === 'function' && photoChange(t)) return;
   if (t.dataset.setting === 'rest') { S.settings.rest = +t.value; save(); toast('Descanso padrão atualizado'); }
   else if (t.dataset.setting === 'sound') { S.settings.sound = t.checked; save(); if (t.checked) { unlockAudio(); beep(); } }
   else if (t.dataset.setting === 'keepAwake') { S.settings.keepAwake = t.checked; save(); syncWakeLock(); }
