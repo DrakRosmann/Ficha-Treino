@@ -86,7 +86,7 @@ const I = {
 function blank() {
   return {
     v: 1, settings: { rest: 90, sound: true, theme: 'auto', accent: 'limao', glass: true },
-    custom: [], programs: [], routines: [], sessions: [], active: null, videos: {}
+    custom: [], programs: [], routines: [], sessions: [], active: null, videos: {}, profile: null
   };
 }
 // Dados antigos (sem programas): as fichas existentes viram o programa "Meu treino"
@@ -274,6 +274,28 @@ function moveInProgram(id, d) {
 }
 const letter = i => String.fromCharCode(65 + (i % 26));
 
+// Folha de confirmação ao criar um programa a partir de um modelo ou do assistente
+let pendingProgram = null;
+function openUseProgram(def) {
+  pendingProgram = def;
+  const hasDays = def.routines.some(r => r.days.length);
+  const othersActive = S.programs.filter(isActiveProg).length;
+  const n = def.routines.length;
+  openSheet(`${sheetHead('Usar “' + def.name + '”')}<div class="sheet-body">
+    <p class="muted" style="margin:0 0 12px">Cria o programa com ${n} ficha${n > 1 ? 's' : ''}. Depois você pode trocar exercícios, séries e dias.</p>
+    <div class="list">
+      ${hasDays ? `<label class="row"><div class="grow"><div class="name">Usar os dias sugeridos</div>
+        <div class="sub wrap">${def.routines.map(r => `${esc(r.name.split(' — ')[0])}: ${r.days.length ? daysLabel(r.days) : 'livre'}`).join(' · ')}</div></div>
+        <span class="switch"><input type="checkbox" id="tplDays" checked><i></i></span></label>` : ''}
+      ${othersActive ? `<label class="row"><div class="grow"><div class="name">Pausar os outros programas</div>
+        <div class="sub wrap">A tela Hoje passa a mostrar só este programa</div></div>
+        <span class="switch"><input type="checkbox" id="tplOnly" checked><i></i></span></label>` : ''}
+    </div>
+    ${hasDays ? '<p class="small muted" style="margin:10px 4px 0">Sem dias fixos, o app sugere a próxima ficha na ordem a cada treino.</p>' : ''}
+  </div>
+  <div class="sheet-foot"><button class="btn primary block" data-act="createPending">Criar programa</button></div>`);
+}
+
 /* ================= Aparência ================= */
 // Cores de destaque: [destaque, texto sobre o destaque, destaque usado como texto] para tema escuro e claro
 const ACCENTS = [
@@ -384,6 +406,7 @@ const routes = [
   [/^#\/programa\/([\w-]+)$/, viewPrograma, 'fichas'],
   [/^#\/modelos$/, viewModelos, 'fichas'],
   [/^#\/modelo\/([\w-]+)$/, viewModelo, 'fichas'],
+  [/^#\/assistente$/, () => typeof viewAssistente === 'function' ? viewAssistente() : viewUpdating(), 'fichas'],
   [/^#\/exercicios$/, viewExercicios, 'exercicios'],
   [/^#\/exercicio\/([\w-]+)$/, viewExercicio, 'exercicios'],
   [/^#\/historico$/, viewHistorico, 'historico'],
@@ -426,6 +449,12 @@ function topBar({ back, right = '' } = {}) {
 }
 function emptyState(icon, title, text, actions = '') {
   return `<div class="empty">${icon}<b>${esc(title)}</b><div>${text}</div>${actions ? `<div class="stack" style="margin-top:18px">${actions}</div>` : ''}</div>`;
+}
+
+// Arquivo novo ainda não carregado (app no meio de uma atualização)
+function viewUpdating() {
+  return topBar({ back: '#/fichas' }) + `<div class="card">${emptyState(I.download, 'Atualizando o app', 'Esta função chegou numa versão nova. Recarregue para usar.',
+    `<button class="btn primary block" data-act="checkUpdate">Recarregar</button>`)}</div>`;
 }
 
 /* ================= Tela: Hoje ================= */
@@ -484,7 +513,8 @@ function viewHoje() {
   } else if (!S.routines.length) {
     html += `<div class="card">${emptyState(I.list, 'Nenhuma ficha ainda',
       'Crie suas fichas de treino escolhendo os exercícios de cada dia, ou comece com um programa pronto (PPL, Upper/Lower, ABC…) e ajuste do seu jeito.',
-      `<a class="btn primary block" href="#/modelos">${I.sparkle}Ver modelos prontos</a>
+      `<a class="btn primary block" href="#/assistente">${I.sparkle}Montar meu treino</a>
+       <a class="btn block" href="#/modelos">${I.list}Ver modelos prontos</a>
        <button class="btn block" data-act="newRoutine">${I.plus}Criar minha ficha</button>`)}</div>`;
   } else {
     for (const r of today) {
@@ -545,7 +575,8 @@ function routineRow(r, i) {
 }
 function viewFichas() {
   let html = topBar({ right: `<button class="link-btn" data-act="newMenu">${I.plus.replace('<svg', '<svg class="inline-ic"')}Novo</button>` }) + `<h1 class="title">Fichas</h1>
-    <a class="tpl-banner" href="#/modelos"><span class="tpl-ic">${I.sparkle}</span><div class="grow"><b>Modelos prontos</b><span>PPL, Upper/Lower, ABC, ABCDE, em casa e mais</span></div>${I.chev}</a>`;
+    <a class="tpl-banner" href="#/assistente"><span class="tpl-ic">${I.sparkle}</span><div class="grow"><b>Montar meu treino</b><span>Responda algumas perguntas e escolha entre 3 opções</span></div>${I.chev}</a>
+    <a class="tpl-banner alt" href="#/modelos"><span class="tpl-ic">${I.list}</span><div class="grow"><b>Modelos prontos</b><span>PPL, Upper/Lower, ABC, ABCDE, em casa e mais</span></div>${I.chev}</a>`;
   if (!S.routines.length && !S.programs.length) {
     return html + `<div class="card">${emptyState(I.list, 'Nenhuma ficha ainda',
       'Uma <b>ficha</b> é a lista de exercícios de um dia de treino. Um <b>programa</b> agrupa várias fichas — por exemplo “Meu treino” com Push, Pull e Legs.',
@@ -1095,6 +1126,14 @@ function viewAjustes() {
     </div>
     <p class="small muted" style="margin:10px 4px 0">Sem baixar, cada foto fica salva depois da primeira vez que aparece. Use no Wi-Fi.</p>` : ''}
 
+    <h2 class="section">Inteligência artificial</h2>
+    <div class="list">
+      <button class="row" data-act="aiKeyEdit"><div class="grow"><div class="name">Chave da API da Anthropic</div>
+        <div class="sub">${typeof aiKey === 'function' && aiKey() ? 'Configurada neste aparelho' : 'Não configurada — necessária para montar treino com IA'}</div></div>${I.chev}</button>
+      <a class="row" href="#/assistente"><div class="grow"><div class="name">Assistente de treino</div><div class="sub">Monta opções de programa a partir do seu perfil</div></div>${I.chev}</a>
+    </div>
+    <p class="small muted" style="margin:10px 4px 0">A IA usa o Claude, da Anthropic, e é cobrada na sua conta da Anthropic. Sem chave, o assistente funciona com regras de treino, offline e grátis.</p>
+
     <h2 class="section">Seus dados</h2>
     <div class="list">
       <button class="row" data-act="exportData"><div class="grow"><div class="name">Exportar backup</div><div class="sub">Salve um arquivo .json no app Arquivos ou iCloud</div></div>${I.chev}</button>
@@ -1113,7 +1152,7 @@ function viewAjustes() {
       <span class="muted">O app abre em tela cheia, funciona offline e mantém seus dados.</span></div>`}
 
     <div style="text-align:center;margin-top:22px"><button class="link-btn" data-act="checkUpdate">Procurar atualização</button></div>
-    <p class="small muted" style="text-align:center;margin-top:6px">Ficha · versão 1.2<br>
+    <p class="small muted" style="text-align:center;margin-top:6px">Ficha · versão 1.3<br>
       Fotos e músculos dos exercícios: <a href="https://github.com/yuhonas/free-exercise-db" target="_blank" rel="noopener" style="text-decoration:underline">free-exercise-db</a> (domínio público)</p>`;
 }
 
@@ -1144,7 +1183,7 @@ function importData(file) {
       onOk: () => {
         const b = blank();
         migrate(d);
-        S = { ...b, settings: { ...b.settings, ...(d.settings || {}) }, custom: d.custom || [], videos: d.videos || {}, programs: d.programs, routines: d.routines, sessions: d.sessions.sort((x, y) => y.start - x.start), active: d.active || null };
+        S = { ...b, settings: { ...b.settings, ...(d.settings || {}) }, custom: d.custom || [], videos: d.videos || {}, profile: d.profile || null, programs: d.programs, routines: d.routines, sessions: d.sessions.sort((x, y) => y.start - x.start), active: d.active || null };
         save(); applyLook(); toast('Backup importado'); go('#/hoje');
       }
     });
@@ -1278,34 +1317,21 @@ const ACT = {
   tplFilter: el => { tplFilter = el.dataset.v; rerender(); },
   useTpl: el => {
     const t = tpls().find(x => x.id === el.dataset.id);
-    const hasDays = t.routines.some(r => r.days.length);
-    const othersActive = S.programs.filter(isActiveProg).length;
-    openSheet(`${sheetHead('Usar “' + t.name + '”')}<div class="sheet-body">
-      <p class="muted" style="margin:0 0 12px">Cria o programa com ${t.routines.length} ficha${t.routines.length > 1 ? 's' : ''}. Depois você pode trocar exercícios, séries e dias.</p>
-      <div class="list">
-        ${hasDays ? `<label class="row"><div class="grow"><div class="name">Usar os dias sugeridos</div>
-          <div class="sub wrap">${t.routines.map(r => `${esc(r.name.split(' — ')[0])}: ${r.days.length ? daysLabel(r.days) : 'livre'}`).join(' · ')}</div></div>
-          <span class="switch"><input type="checkbox" id="tplDays" checked><i></i></span></label>` : ''}
-        ${othersActive ? `<label class="row"><div class="grow"><div class="name">Pausar os outros programas</div>
-          <div class="sub wrap">A tela Hoje passa a mostrar só este programa</div></div>
-          <span class="switch"><input type="checkbox" id="tplOnly" checked><i></i></span></label>` : ''}
-      </div>
-      ${hasDays ? '<p class="small muted" style="margin:10px 4px 0">Sem dias fixos, o app sugere a próxima ficha na ordem a cada treino.</p>' : ''}
-    </div>
-    <div class="sheet-foot"><button class="btn primary block" data-act="tplCreate" data-id="${t.id}">Criar programa</button></div>`);
+    openUseProgram({ name: t.name, routines: t.routines });
   },
-  tplCreate: el => {
-    const t = tpls().find(x => x.id === el.dataset.id);
+  createPending: () => {
+    const def = pendingProgram; if (!def) return;
     const useDays = !$('#tplDays') || $('#tplDays').checked, only = $('#tplOnly') && $('#tplOnly').checked;
     if (only) S.programs.forEach(p => { p.active = false; });
-    const p = { id: uid(), name: t.name, active: true };
+    const p = { id: uid(), name: def.name, active: true };
     S.programs.push(p);
-    for (const tr of t.routines) {
+    for (const tr of def.routines) {
       S.routines.push({
         id: uid(), name: tr.name, days: useDays ? [...tr.days] : [], programId: p.id,
-        items: tr.items.filter(([exId]) => getEx(exId)).map(([exId, sets, reps, rest]) => ({ id: uid(), exId, sets, reps, rest, note: '' }))
+        items: tr.items.filter(([exId]) => getEx(exId)).map(([exId, sets, reps, rest, note]) => ({ id: uid(), exId, sets, reps, rest, note: note || '' }))
       });
     }
+    pendingProgram = null;
     save(); closeSheet(); toast('Programa criado — ajuste como quiser');
     go(`#/programa/${p.id}`);
   },
@@ -1570,9 +1596,11 @@ const ACT = {
   wipeData: () => confirmSheet({
     title: 'Apagar tudo?', text: 'Fichas, histórico e exercícios personalizados serão apagados deste aparelho. Isso não pode ser desfeito.',
     ok: 'Apagar tudo', danger: true,
-    onOk: () => { S = blank(); save(); applyLook(); toast('Dados apagados'); go('#/hoje'); }
+    onOk: () => { S = blank(); save(); applyLook(); if (typeof aiSetKey === 'function') aiSetKey(''); toast('Dados apagados'); go('#/hoje'); }
   })
 };
+
+if (typeof ASSIST_ACTIONS !== 'undefined') Object.assign(ACT, ASSIST_ACTIONS);
 
 function backToPicker() {
   renderPicker();
@@ -1615,6 +1643,8 @@ document.addEventListener('input', e => {
     S.active.notes = t.value; save();
   } else if (t.id === 'exq') {
     exQ = t.value; $('#exlist').innerHTML = exList();
+  } else if (t.dataset.pf) {
+    if (typeof onProfileInput === 'function') onProfileInput(t);
   } else if (t.id === 'pickq') {
     picker.q = t.value; $('#picklist').innerHTML = pickerList();
   }
