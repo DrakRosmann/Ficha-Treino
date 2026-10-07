@@ -76,18 +76,36 @@ const I = {
   trophy: '<svg viewBox="0 0 24 24"><path d="M8 4.5h8v5a4 4 0 0 1-8 0zM8 6.5H5a3 3 0 0 0 3 4M16 6.5h3a3 3 0 0 1-3 4M12 13.5V17M8.5 20h7M10 17h4v3h-4z"/></svg>',
   video: '<svg viewBox="0 0 24 24"><rect x="3" y="5.5" width="18" height="13" rx="3"/><path d="M10.5 9.5v5l4-2.5z"/></svg>',
   expand: '<svg viewBox="0 0 24 24"><path d="M14 4.5h5.5V10M10 19.5H4.5V14M19.5 4.5 13.5 10.5M4.5 19.5l6-6"/></svg>',
-  download: '<svg viewBox="0 0 24 24"><path d="M12 4.5v11M7 11l5 5 5-5M5 19.5h14"/></svg>'
+  download: '<svg viewBox="0 0 24 24"><path d="M12 4.5v11M7 11l5 5 5-5M5 19.5h14"/></svg>',
+  folder: '<svg viewBox="0 0 24 24"><path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/></svg>',
+  sparkle: '<svg viewBox="0 0 24 24"><path d="M11 3.5l1.9 5 5 1.9-5 1.9-1.9 5-1.9-5-5-1.9 5-1.9z"/><path d="M18.5 14.5l.9 2.1 2.1.9-2.1.9-.9 2.1-.9-2.1-2.1-.9 2.1-.9z"/></svg>',
+  palette: '<svg viewBox="0 0 24 24"><path d="M12 3.5a8.5 8.5 0 0 0 0 17c1.2 0 1.8-.8 1.8-1.7 0-1.3-1.2-1.6-1.2-2.8 0-1 .8-1.7 1.8-1.7h2.1a4 4 0 0 0 4-4c0-3.8-3.8-6.8-8.5-6.8z"/><circle cx="7.8" cy="11" r="1"/><circle cx="10.5" cy="7.5" r="1"/><circle cx="15" cy="7.8" r="1"/></svg>'
 };
 
 /* ================= Estado ================= */
 function blank() {
-  return { v: 1, settings: { rest: 90, sound: true }, custom: [], routines: [], sessions: [], active: null, videos: {} };
+  return {
+    v: 1, settings: { rest: 90, sound: true, theme: 'auto', accent: 'limao', glass: true },
+    custom: [], programs: [], routines: [], sessions: [], active: null, videos: {}
+  };
+}
+// Dados antigos (sem programas): as fichas existentes viram o programa "Meu treino"
+function migrate(d) {
+  if (!Array.isArray(d.programs)) {
+    d.programs = [];
+    if ((d.routines || []).length) {
+      const p = { id: uid(), name: 'Meu treino', active: true };
+      d.programs.push(p);
+      d.routines.forEach(r => { r.programId = p.id; });
+    }
+  }
+  return d;
 }
 function load() {
   try {
     const raw = localStorage.getItem(KEY);
     if (raw) {
-      const d = JSON.parse(raw);
+      const d = migrate(JSON.parse(raw));
       const b = blank();
       return { ...b, ...d, settings: { ...b.settings, ...(d.settings || {}) } };
     }
@@ -231,35 +249,72 @@ function fmtSet(kind, s) {
   return '';
 }
 
-/* ================= Modelos ================= */
-function templateABC() {
-  const it = (exId, sets, reps, rest = 90) => ({ id: uid(), exId, sets, reps, rest, note: '' });
-  return [
-    {
-      id: uid(), name: 'Treino A — Peito, ombro e tríceps', days: [1, 4], items: [
-        it('supino-reto-barra', 4, '8-10', 120), it('supino-inclinado-halter', 3, '10-12'),
-        it('crossover-alto', 3, '12-15', 60), it('desenvolvimento-halter', 3, '8-12'),
-        it('elevacao-lateral', 3, '12-15', 60), it('triceps-corda', 3, '10-12', 60),
-        it('triceps-frances', 3, '10-12', 60)
-      ]
-    },
-    {
-      id: uid(), name: 'Treino B — Costas e bíceps', days: [2, 5], items: [
-        it('puxada-aberta', 4, '8-12'), it('remada-curvada', 4, '8-10', 120),
-        it('serrote', 3, '10-12'), it('face-pull', 3, '15', 60),
-        it('rosca-direta', 3, '8-12', 60), it('rosca-martelo', 3, '10-12', 60)
-      ]
-    },
-    {
-      id: uid(), name: 'Treino C — Pernas e abdômen', days: [3, 6], items: [
-        it('agachamento', 4, '6-10', 150), it('leg-press-45', 3, '10-12', 120),
-        it('extensora', 3, '12-15', 60), it('mesa-flexora', 3, '10-12', 60),
-        it('stiff-barra', 3, '8-10', 120), it('panturrilha-em-pe', 4, '12-15', 60),
-        it('prancha', 3, '45', 45)
-      ]
-    }
-  ];
+/* ================= Programas ================= */
+// Um programa agrupa fichas (ex.: "Meu treino" → Push, Pull, Legs). Fichas sem programa são "avulsas".
+const tpls = () => (typeof TEMPLATES === 'undefined' ? [] : TEMPLATES);
+function programOf(r) { return r && r.programId ? S.programs.find(p => p.id === r.programId) || null : null; }
+function progRoutines(pid) { return S.routines.filter(r => r.programId === pid); }
+const isActiveProg = p => p.active !== false;
+// Fichas que valem para a tela Hoje: avulsas e as de programas ativos
+function isScheduled(r) { const p = programOf(r); return !p || isActiveProg(p); }
+// Próxima ficha na ordem do programa, a partir do último treino feito nele
+function nextInProgram(p) {
+  const rs = progRoutines(p.id);
+  if (!rs.length) return null;
+  const ids = new Set(rs.map(r => r.id));
+  const last = S.sessions.find(s => ids.has(s.routineId));
+  if (!last) return rs[0];
+  return rs[(rs.findIndex(r => r.id === last.routineId) + 1) % rs.length];
 }
+function moveInProgram(id, d) {
+  const r = S.routines.find(x => x.id === id), rs = progRoutines(r.programId), o = rs[rs.indexOf(r) + d];
+  if (!o) return;
+  const a = S.routines.indexOf(r), b = S.routines.indexOf(o);
+  [S.routines[a], S.routines[b]] = [S.routines[b], S.routines[a]];
+}
+const letter = i => String.fromCharCode(65 + (i % 26));
+
+/* ================= Aparência ================= */
+// Cores de destaque: [destaque, texto sobre o destaque, destaque usado como texto] para tema escuro e claro
+const ACCENTS = [
+  { id: 'limao', name: 'Limão', dark: ['#C8F250', '#12160A', '#C8F250'], light: ['#B6E63A', '#15190A', '#4B7A00'] },
+  { id: 'verde', name: 'Verde', dark: ['#34D399', '#03200F', '#4ADE9F'], light: ['#22B45E', '#03200F', '#15803D'] },
+  { id: 'turquesa', name: 'Turquesa', dark: ['#2DD4BF', '#032420', '#4FE0CD'], light: ['#14B8A6', '#022B26', '#0B7F72'] },
+  { id: 'azul', name: 'Azul', dark: ['#4DA3FF', '#04111F', '#6CB4FF'], light: ['#0A84FF', '#FFFFFF', '#0066CC'] },
+  { id: 'roxo', name: 'Roxo', dark: ['#A78BFA', '#140B2E', '#B9A2FF'], light: ['#7C3AED', '#FFFFFF', '#6D28D9'] },
+  { id: 'rosa', name: 'Rosa', dark: ['#FF6FAE', '#2A0716', '#FF8ABF'], light: ['#E83E8C', '#FFFFFF', '#C2185B'] },
+  { id: 'vermelho', name: 'Vermelho', dark: ['#FF5A52', '#2A0505', '#FF7A72'], light: ['#E5322B', '#FFFFFF', '#C2241D'] },
+  { id: 'laranja', name: 'Laranja', dark: ['#FF9F43', '#2A1400', '#FFB066'], light: ['#F28C1C', '#241200', '#B85C00'] },
+  { id: 'amarelo', name: 'Amarelo', dark: ['#FFD43B', '#241C00', '#FFD43B'], light: ['#F5C400', '#1F1800', '#8A6D00'] },
+  { id: 'mono', name: 'Grafite', dark: ['#F2F3EF', '#0E1013', '#F2F3EF'], light: ['#15181C', '#FFFFFF', '#15181C'] }
+];
+const THEMES = [['auto', 'Automático'], ['light', 'Claro'], ['dark', 'Escuro'], ['black', 'Preto']];
+const lightMQ = matchMedia('(prefers-color-scheme: light)');
+function schemeNow() {
+  const t = S.settings.theme;
+  return t === 'light' || (t === 'auto' && lightMQ.matches) ? 'light' : 'dark';
+}
+function accentVars(scheme) {
+  const a = (ACCENTS.find(x => x.id === S.settings.accent) || ACCENTS[0])[scheme];
+  const [r, g, b] = [1, 3, 5].map(i => parseInt(a[0].slice(i, i + 2), 16));
+  return { '--accent': a[0], '--accent-ink': a[1], '--accent-text': a[2], '--accent-soft': `rgba(${r}, ${g}, ${b}, .16)` };
+}
+function applyLook() {
+  const root = document.documentElement, scheme = schemeNow();
+  root.dataset.scheme = scheme;
+  root.toggleAttribute('data-black', S.settings.theme === 'black');
+  root.toggleAttribute('data-glass', !!S.settings.glass);
+  for (const [k, v] of Object.entries(accentVars(scheme))) root.style.setProperty(k, v);
+  const bg = getComputedStyle(root).getPropertyValue('--bg').trim();
+  document.querySelectorAll('meta[name="theme-color"]').forEach(m => { m.removeAttribute('media'); m.content = bg; });
+  // Cópia leve para o index.html aplicar o tema antes do app carregar (evita piscar)
+  try {
+    localStorage.setItem('ficha.look', JSON.stringify({
+      theme: S.settings.theme, glass: !!S.settings.glass, dark: accentVars('dark'), light: accentVars('light')
+    }));
+  } catch (e) { /* ignora */ }
+}
+lightMQ.addEventListener && lightMQ.addEventListener('change', () => { if (S.settings.theme === 'auto') applyLook(); });
 
 /* ================= UI: toast, sheet, som ================= */
 let toastTimer;
@@ -326,6 +381,9 @@ const routes = [
   [/^#\/hoje$/, viewHoje, 'hoje'],
   [/^#\/fichas$/, viewFichas, 'fichas'],
   [/^#\/ficha\/([\w-]+)$/, viewFicha, 'fichas'],
+  [/^#\/programa\/([\w-]+)$/, viewPrograma, 'fichas'],
+  [/^#\/modelos$/, viewModelos, 'fichas'],
+  [/^#\/modelo\/([\w-]+)$/, viewModelo, 'fichas'],
   [/^#\/exercicios$/, viewExercicios, 'exercicios'],
   [/^#\/exercicio\/([\w-]+)$/, viewExercicio, 'exercicios'],
   [/^#\/historico$/, viewHistorico, 'historico'],
@@ -383,13 +441,20 @@ function streakWeeks() {
 function viewHoje() {
   const now = Date.now(), dow = new Date().getDay();
   const wk = startOfWeek(now);
-  const today = S.routines.filter(r => r.days.includes(dow));
-  const others = S.routines.filter(r => !r.days.includes(dow));
+  const sched = S.routines.filter(isScheduled);
+  const today = sched.filter(r => r.days.includes(dow));
+  // Programas ativos sem dia fixo: sugere a próxima ficha na ordem
+  const seq = S.programs.filter(isActiveProg)
+    .map(p => ({ p, rs: progRoutines(p.id) }))
+    .filter(x => x.rs.length && x.rs.every(r => !r.days.length))
+    .map(x => ({ p: x.p, r: nextInProgram(x.p) }));
+  const heroIds = new Set([...today.map(r => r.id), ...seq.map(x => x.r.id)]);
+  const others = sched.filter(r => !heroIds.has(r.id));
   const doneToday = sessionsInRange(startOfDay(now), addDays(startOfDay(now), 1));
 
   const week = [0, 1, 2, 3, 4, 5, 6].map(i => {
     const t = addDays(wk, i), d = new Date(t);
-    const plan = S.routines.some(r => r.days.includes(d.getDay()));
+    const plan = sched.some(r => r.days.includes(d.getDay()));
     const done = sessionsInRange(t, addDays(t, 1)).length > 0;
     return `<div class="d ${plan ? 'plan' : ''} ${done ? 'done' : ''} ${t === startOfDay(now) ? 'today' : ''}">
       <small>${DAY[d.getDay()]}</small><b class="num">${d.getDate()}</b><i></i></div>`;
@@ -403,7 +468,7 @@ function viewHoje() {
   if (S.active) title = 'Treino em andamento';
   else if (!S.routines.length) title = 'Vamos montar seu treino';
   else if (doneToday.length) title = 'Treino feito hoje';
-  else if (today.length) title = 'Dia de treinar';
+  else if (today.length || seq.length) title = 'Dia de treinar';
   else title = 'Dia de descanso';
 
   let html = `<div class="eyebrow">${dateLong(now)}</div><h1 class="title">${title}</h1>
@@ -418,11 +483,15 @@ function viewHoje() {
       <a class="btn block" href="#/treino">Continuar treino</a></div>`;
   } else if (!S.routines.length) {
     html += `<div class="card">${emptyState(I.list, 'Nenhuma ficha ainda',
-      'Crie suas fichas de treino escolhendo os exercícios de cada dia, ou comece com um modelo ABC e ajuste do seu jeito.',
-      `<button class="btn primary block" data-act="newRoutine">${I.plus}Criar minha ficha</button>
-       <button class="btn block" data-act="useTemplate">Usar modelo ABC</button>`)}</div>`;
+      'Crie suas fichas de treino escolhendo os exercícios de cada dia, ou comece com um programa pronto (PPL, Upper/Lower, ABC…) e ajuste do seu jeito.',
+      `<a class="btn primary block" href="#/modelos">${I.sparkle}Ver modelos prontos</a>
+       <button class="btn block" data-act="newRoutine">${I.plus}Criar minha ficha</button>`)}</div>`;
   } else {
-    for (const r of today) html += heroRoutine(r, doneToday.some(s => s.routineId === r.id));
+    for (const r of today) {
+      const p = programOf(r);
+      html += heroRoutine(r, doneToday.some(s => s.routineId === r.id), `FICHA DE HOJE${p ? ' · ' + p.name.toUpperCase() : ''}`);
+    }
+    for (const { p, r } of seq) html += heroRoutine(r, false, `PRÓXIMA FICHA · ${p.name.toUpperCase()}`);
   }
 
   if (S.sessions.length || S.routines.length) {
@@ -434,12 +503,15 @@ function viewHoje() {
 
   if (!S.active && S.routines.length) {
     if (others.length) {
-      html += `<h2 class="section">${today.length ? 'Outras fichas' : 'Escolha uma ficha'}</h2><div class="list">` +
-        others.map(r => `<button class="row" data-act="startRoutine" data-id="${r.id}">
-          <div class="grow"><div class="name">${esc(r.name)}</div><div class="sub">${daysLabel(r.days)} · ${r.items.length} exercícios</div></div>
-          <span class="badge accent">Iniciar</span></button>`).join('') + '</div>';
+      html += `<h2 class="section">${today.length || seq.length ? 'Outras fichas' : 'Escolha uma ficha'}</h2><div class="list">` +
+        others.map(r => {
+          const p = programOf(r);
+          return `<button class="row" data-act="startRoutine" data-id="${r.id}">
+          <div class="grow"><div class="name">${esc(r.name || 'Sem nome')}</div><div class="sub">${p ? esc(p.name) + ' · ' : ''}${daysLabel(r.days)} · ${r.items.length} exercícios</div></div>
+          <span class="badge accent">Iniciar</span></button>`;
+        }).join('') + '</div>';
     }
-    html += `<div style="margin-top:12px"><button class="btn block" data-act="startEmpty">${I.plus}Treino livre</button></div>`;
+    html += `<div class="btn-row" style="margin-top:12px"><button class="btn" data-act="startEmpty">${I.plus}Treino livre</button><a class="btn" href="#/fichas">${I.list}Ver fichas</a></div>`;
   }
 
   const last = S.sessions[0];
@@ -451,37 +523,121 @@ function viewHoje() {
   return html;
 }
 
-function heroRoutine(r, done) {
+function heroRoutine(r, done, label) {
   const items = r.items.slice(0, 6).map(it => `<li><span>${esc(exName(it.exId))}</span><span class="num">${it.sets} × ${esc(it.reps || '—')}</span></li>`).join('');
-  const more = r.items.length > 6 ? `<li><span>+ ${r.items.length - 6} exercícios</span><span></span></li>` : '';
+  const n = r.items.length - 6;
+  const more = n > 0 ? `<li><span>+ ${n} exercício${n > 1 ? 's' : ''}</span><span></span></li>` : '';
   return `<div class="card accent">
-    <div class="small muted" style="font-weight:700">${done ? 'CONCLUÍDO HOJE ✓' : 'FICHA DE HOJE'}</div>
-    <div class="hero-title">${esc(r.name)}</div>
+    <div class="small muted" style="font-weight:700">${done ? 'CONCLUÍDO HOJE ✓' : esc(label)}</div>
+    <div class="hero-title">${esc(r.name || 'Sem nome')}</div>
     ${r.items.length ? `<ul class="hero-list">${items}${more}</ul>` : '<p class="small muted">Ficha vazia — adicione exercícios.</p>'}
     <div class="btn-row">
       ${r.items.length ? `<button class="btn" data-act="startRoutine" data-id="${r.id}">${I.play}${done ? 'Treinar de novo' : 'Iniciar treino'}</button>` : ''}
-      <a class="btn" href="#/ficha/${r.id}" style="flex:0 0 auto">${I.edit}</a>
+      <a class="btn" href="#/ficha/${r.id}" style="flex:0 0 auto" aria-label="Editar ficha">${I.edit}</a>
     </div></div>`;
 }
 
 /* ================= Tela: Fichas ================= */
+function routineRow(r, i) {
+  return `<a class="row" href="#/ficha/${r.id}">
+    <div class="dot ${isScheduled(r) && r.days.includes(new Date().getDay()) ? 'on' : ''}">${letter(i)}</div>
+    <div class="grow"><div class="name">${esc(r.name || 'Sem nome')}</div><div class="sub">${daysLabel(r.days)} · ${r.items.length} exercícios</div></div>${I.chev}</a>`;
+}
 function viewFichas() {
-  let html = topBar({ right: `<button class="link-btn" data-act="newRoutine">Nova ficha</button>` }) + `<h1 class="title">Fichas</h1>`;
-  if (!S.routines.length) {
-    return html + `<div class="card">${emptyState(I.list, 'Nenhuma ficha', 'Uma ficha é a lista de exercícios de um dia de treino, com séries, repetições e descanso.',
-      `<button class="btn primary block" data-act="newRoutine">${I.plus}Criar ficha</button>
-       <button class="btn block" data-act="useTemplate">Usar modelo ABC</button>`)}</div>`;
+  let html = topBar({ right: `<button class="link-btn" data-act="newMenu">${I.plus.replace('<svg', '<svg class="inline-ic"')}Novo</button>` }) + `<h1 class="title">Fichas</h1>
+    <a class="tpl-banner" href="#/modelos"><span class="tpl-ic">${I.sparkle}</span><div class="grow"><b>Modelos prontos</b><span>PPL, Upper/Lower, ABC, ABCDE, em casa e mais</span></div>${I.chev}</a>`;
+  if (!S.routines.length && !S.programs.length) {
+    return html + `<div class="card">${emptyState(I.list, 'Nenhuma ficha ainda',
+      'Uma <b>ficha</b> é a lista de exercícios de um dia de treino. Um <b>programa</b> agrupa várias fichas — por exemplo “Meu treino” com Push, Pull e Legs.',
+      `<button class="btn primary block" data-act="newProgram">${I.folder}Criar programa</button>
+       <button class="btn block" data-act="newRoutine">${I.plus}Criar ficha avulsa</button>`)}</div>`;
   }
-  html += '<div class="list">' + S.routines.map((r, i) => `<a class="row" href="#/ficha/${r.id}">
-    <div class="dot ${r.days.includes(new Date().getDay()) ? 'on' : ''}">${String.fromCharCode(65 + (i % 26))}</div>
-    <div class="grow"><div class="name">${esc(r.name || 'Sem nome')}</div><div class="sub">${daysLabel(r.days)} · ${r.items.length} exercícios</div></div>${I.chev}</a>`).join('') + '</div>';
-  html += `<p class="small muted" style="text-align:center;margin-top:14px">Toque numa ficha para editar exercícios, séries e dias da semana.</p>`;
+  if (S.programs.length) {
+    html += '<h2 class="section">Programas</h2><div class="list">' + S.programs.map(p => {
+      const rs = progRoutines(p.id), on = isActiveProg(p);
+      return `<a class="row" href="#/programa/${p.id}"><div class="dot ${on ? 'on' : ''}">${I.folder}</div>
+        <div class="grow"><div class="name">${esc(p.name || 'Sem nome')}</div>
+        <div class="sub">${rs.length ? rs.map(r => esc(r.name || 'Sem nome')).join(' · ') : 'Nenhuma ficha'}</div></div>
+        ${on ? '' : '<span class="badge">Pausado</span>'}${I.chev}</a>`;
+    }).join('') + '</div>';
+  }
+  const loose = S.routines.filter(r => !programOf(r));
+  if (loose.length) {
+    html += `<h2 class="section">${S.programs.length ? 'Fichas avulsas' : 'Fichas'}</h2><div class="list">` + loose.map(routineRow).join('') + '</div>';
+  }
+  html += `<p class="small muted" style="text-align:center;margin-top:14px">Toque num programa para ver as fichas dele. Use “Novo” para criar programas e fichas.</p>`;
   return html;
+}
+
+/* ================= Tela: Programa ================= */
+function viewPrograma(id) {
+  const p = S.programs.find(x => x.id === id);
+  if (!p) { location.replace('#/fichas'); return null; }
+  const rs = progRoutines(id), on = isActiveProg(p), next = nextInProgram(p), fixed = rs.some(r => r.days.length);
+  let html = topBar({ back: '#/fichas', right: `<button class="icon-btn" data-act="programMenu" data-id="${id}" aria-label="Mais opções">${I.more}</button>` }) + `
+    <div class="eyebrow">Programa</div>
+    <input class="title-input" value="${esc(p.name)}" placeholder="Nome do programa" data-pname maxlength="60">
+    <div class="list"><label class="row"><div class="grow"><div class="name">Programa ativo</div>
+      <div class="sub">${on ? 'As fichas aparecem na tela Hoje' : 'Pausado — não aparece na tela Hoje'}</div></div>
+      <span class="switch"><input type="checkbox" data-pactive ${on ? 'checked' : ''}><i></i></span></label></div>`;
+  if (next && next.items.length) {
+    html += `<button class="btn primary block" style="margin-top:12px" data-act="startRoutine" data-id="${next.id}">${I.play}<span class="ellip">Iniciar próxima: ${esc(next.name || 'Sem nome')}</span></button>`;
+  }
+  html += `<h2 class="section">Fichas <span class="muted small" style="text-transform:none;letter-spacing:0">${rs.length}</span></h2>`;
+  if (rs.length) {
+    html += '<div class="list">' + rs.map((r, i) => `<div class="row prow">
+      <a class="plink" href="#/ficha/${r.id}"><div class="dot ${next && next.id === r.id ? 'on' : ''}">${letter(i)}</div>
+        <div class="grow"><div class="name">${esc(r.name || 'Sem nome')}</div><div class="sub">${daysLabel(r.days)} · ${r.items.length} exercícios</div></div></a>
+      <button class="icon-btn" data-act="progUp" data-id="${r.id}" aria-label="Subir" ${i === 0 ? 'disabled style="opacity:.3"' : ''}>${I.up}</button>
+      <button class="icon-btn" data-act="progDown" data-id="${r.id}" aria-label="Descer" ${i === rs.length - 1 ? 'disabled style="opacity:.3"' : ''}>${I.down}</button>
+    </div>`).join('') + '</div>';
+  } else {
+    html += `<div class="card">${emptyState(I.list, 'Programa vazio', 'Crie as fichas deste programa — por exemplo Push, Pull e Legs, ou A, B e C.')}</div>`;
+  }
+  const loose = S.routines.filter(r => !programOf(r));
+  html += `<div class="stack" style="margin-top:14px">
+      <button class="btn block" data-act="newRoutine" data-prog="${id}">${I.plus}Nova ficha neste programa</button>
+      ${loose.length ? `<button class="btn block" data-act="moveIntoProgram" data-id="${id}">${I.folder}Trazer fichas avulsas</button>` : ''}
+    </div>
+    <p class="small muted" style="margin:14px 4px 0;line-height:1.5">${fixed
+      ? 'As fichas aparecem na tela Hoje nos dias marcados. Para treinar em sequência (A → B → C…) sem dia fixo, desmarque os dias de todas as fichas.'
+      : 'Sem dias fixos: a tela Hoje sugere a próxima ficha na ordem (A → B → C…), seguindo o último treino feito. Marque dias nas fichas se preferir dias fixos.'}</p>`;
+  return html;
+}
+
+/* ================= Tela: Modelos prontos ================= */
+let tplFilter = '';
+const TPL_FILTERS = [['', 'Todos'], ['Iniciante', 'Iniciante'], ['Intermediário', 'Intermediário'], ['Avançado', 'Avançado'], ['casa', 'Em casa']];
+function viewModelos() {
+  const list = tpls().filter(t => !tplFilter || t.level === tplFilter || t.place === tplFilter);
+  return topBar({ back: '#/fichas' }) + `<h1 class="title">Modelos prontos</h1>
+    <p class="muted" style="margin:-8px 2px 14px">Escolha um programa, veja as fichas e adicione aos seus. Depois dá para mudar tudo.</p>
+    <div class="chips">${TPL_FILTERS.map(([v, l]) => `<button class="chip ${tplFilter === v ? 'on' : ''}" data-act="tplFilter" data-v="${v}">${l}</button>`).join('')}</div>
+    ${list.map(t => `<a class="card tpl" href="#/modelo/${t.id}">
+      <div class="tpl-top"><b>${esc(t.name)}</b>${I.chev}</div>
+      <div class="tpl-badges"><span class="badge accent">${esc(t.level)}</span><span class="badge">${esc(t.freq)}</span>${t.place === 'casa' ? '<span class="badge">Em casa</span>' : ''}</div>
+      <p>${esc(t.desc)}</p>
+      <div class="tpl-routines">${t.routines.map((r, i) => `<span><i>${letter(i)}</i>${esc(r.name)}</span>`).join('')}</div>
+    </a>`).join('') || `<div class="card">${emptyState(I.search, 'Nenhum modelo', 'Tente outro filtro.')}</div>`}`;
+}
+function viewModelo(id) {
+  const t = tpls().find(x => x.id === id);
+  if (!t) { location.replace('#/modelos'); return null; }
+  return topBar({ back: '#/modelos' }) + `<div class="eyebrow">${esc(t.level)} · ${esc(t.freq)}</div><h1 class="title">${esc(t.name)}</h1>
+    <p class="muted" style="margin:-6px 2px 4px;line-height:1.5">${esc(t.desc)}</p>
+    ${t.routines.map((r, i) => `<h2 class="section"><span>${letter(i)} · ${esc(r.name)}</span><span class="small" style="text-transform:none;letter-spacing:0">${r.days.length ? daysLabel(r.days) : 'Sem dia fixo'}</span></h2>
+      <div class="list">${r.items.map(([exId, sets, reps]) => {
+        const ex = getEx(exId), k = exKind(exId);
+        return `<button class="row" data-act="howTo" data-id="${exId}">${thumb(ex)}<div class="grow"><div class="name">${esc(exName(exId))}</div>
+          <div class="sub num">${sets} × ${esc(reps)}${k === 's' ? ' s' : k === 'c' ? ' min' : ''}</div></div>${I.chev}</button>`;
+      }).join('')}</div>`).join('')}
+    <div class="tpl-cta"><button class="btn primary block" data-act="useTpl" data-id="${t.id}">${I.plus}Usar este programa</button></div>`;
 }
 
 function viewFicha(id) {
   const r = S.routines.find(x => x.id === id);
   if (!r) { location.replace('#/fichas'); return null; }
+  const prog = programOf(r);
   const days = WEEK_ORDER.map(d => `<button class="chip ${r.days.includes(d) ? 'on' : ''}" data-act="toggleDay" data-d="${d}">${DAY[d]}</button>`).join('');
   const items = r.items.map((it, i) => {
     const ex = getEx(it.exId), kind = exKind(it.exId);
@@ -504,8 +660,13 @@ function viewFicha(id) {
     </div>`;
   }).join('');
 
-  return topBar({ back: '#/fichas', right: `<button class="icon-btn" data-act="routineMenu" aria-label="Mais opções">${I.more}</button>` }) + `
+  const progOpts = `<option value="">Nenhum (ficha avulsa)</option>` +
+    S.programs.map(p => `<option value="${p.id}" ${prog && prog.id === p.id ? 'selected' : ''}>${esc(p.name || 'Sem nome')}</option>`).join('') +
+    `<option value="__new">+ Novo programa…</option>`;
+  return topBar({ back: prog ? `#/programa/${prog.id}` : '#/fichas', right: `<button class="icon-btn" data-act="routineMenu" aria-label="Mais opções">${I.more}</button>` }) + `
+    ${prog ? `<div class="eyebrow">${esc(prog.name)}</div>` : ''}
     <input class="title-input" value="${esc(r.name)}" placeholder="Nome da ficha" data-rname maxlength="60">
+    <label class="prog-pick">${I.folder}<span>Programa</span><select class="input" data-rprog>${progOpts}</select></label>
     <h2 class="section" style="margin-top:4px">Dias da semana</h2>
     <div class="days">${days}</div>
     <h2 class="section">Exercícios <span class="muted small" style="text-transform:none;letter-spacing:0">${r.items.length}</span></h2>
@@ -903,7 +1064,23 @@ function viewSessao(id) {
 /* ================= Tela: Ajustes ================= */
 function viewAjustes() {
   const standalone = window.navigator.standalone || matchMedia('(display-mode: standalone)').matches;
+  const scheme = schemeNow();
   return `<div class="top"></div><h1 class="title">Ajustes</h1>
+    <h2 class="section">Aparência</h2>
+    <div class="card look">
+      <div class="look-label">Tema</div>
+      <div class="seg" role="radiogroup" aria-label="Tema">${THEMES.map(([v, l]) => `<button class="${S.settings.theme === v ? 'on' : ''}" data-act="setTheme" data-v="${v}" role="radio" aria-checked="${S.settings.theme === v}">${l}</button>`).join('')}</div>
+      <div class="look-label">Cor de destaque</div>
+      <div class="swatches" role="radiogroup" aria-label="Cor de destaque">${ACCENTS.map(a => {
+        const on = (S.settings.accent || 'limao') === a.id, c = a[scheme];
+        return `<button class="sw ${on ? 'on' : ''}" data-act="setAccent" data-v="${a.id}" role="radio" aria-checked="${on}" style="--sw:${c[0]};--sw-ink:${c[1]}"><i>${on ? I.check : ''}</i><span>${a.name}</span></button>`;
+      }).join('')}</div>
+    </div>
+    <div class="list" style="margin-top:10px">
+      <label class="row"><div class="grow"><div class="name">Efeito vidro (Liquid Glass)</div><div class="sub wrap">Barra flutuante e painéis translúcidos, no estilo do iOS 26</div></div>
+        <span class="switch"><input type="checkbox" data-setting="glass" ${S.settings.glass ? 'checked' : ''}><i></i></span></label>
+    </div>
+
     <h2 class="section">Treino</h2>
     <div class="list">
       <label class="row"><div class="grow"><div class="name">Descanso padrão</div><div class="sub">Usado em treino livre e exercícios novos</div></div>
@@ -923,10 +1100,10 @@ function viewAjustes() {
       <button class="row" data-act="exportData"><div class="grow"><div class="name">Exportar backup</div><div class="sub">Salve um arquivo .json no app Arquivos ou iCloud</div></div>${I.chev}</button>
       <label class="row" style="cursor:pointer"><div class="grow"><div class="name">Importar backup</div><div class="sub">Substitui os dados atuais pelos do arquivo</div></div>${I.chev}
         <input type="file" accept="application/json,.json" id="importFile" hidden></label>
-      <button class="row" data-act="useTemplate"><div class="grow"><div class="name">Adicionar modelo ABC</div><div class="sub">3 fichas prontas para editar</div></div>${I.chev}</button>
+      <a class="row" href="#/modelos"><div class="grow"><div class="name">Modelos de treino prontos</div><div class="sub">PPL, Upper/Lower, ABC, ABCDE, em casa e mais</div></div>${I.chev}</a>
       <button class="row" data-act="wipeData"><div class="grow"><div class="name" style="color:var(--danger)">Apagar todos os dados</div></div></button>
     </div>
-    <p class="small muted" style="margin:10px 4px 0">${S.routines.length} fichas · ${S.sessions.length} treinos · ${S.custom.length} exercícios personalizados. Tudo fica salvo só neste aparelho — exporte um backup de vez em quando.</p>
+    <p class="small muted" style="margin:10px 4px 0">${S.programs.length} programas · ${S.routines.length} fichas · ${S.sessions.length} treinos · ${S.custom.length} exercícios personalizados. Tudo fica salvo só neste aparelho — exporte um backup de vez em quando.</p>
 
     ${standalone ? '' : `<h2 class="section">Instalar no iPhone</h2>
     <div class="card small" style="line-height:1.55">
@@ -935,7 +1112,8 @@ function viewAjustes() {
       3. Escolha <b>Adicionar à Tela de Início</b> e confirme.<br>
       <span class="muted">O app abre em tela cheia, funciona offline e mantém seus dados.</span></div>`}
 
-    <p class="small muted" style="text-align:center;margin-top:26px">Ficha · versão 1.1<br>
+    <div style="text-align:center;margin-top:22px"><button class="link-btn" data-act="checkUpdate">Procurar atualização</button></div>
+    <p class="small muted" style="text-align:center;margin-top:6px">Ficha · versão 1.2<br>
       Fotos e músculos dos exercícios: <a href="https://github.com/yuhonas/free-exercise-db" target="_blank" rel="noopener" style="text-decoration:underline">free-exercise-db</a> (domínio público)</p>`;
 }
 
@@ -965,8 +1143,9 @@ function importData(file) {
       ok: 'Importar', danger: true,
       onOk: () => {
         const b = blank();
-        S = { ...b, settings: { ...b.settings, ...(d.settings || {}) }, custom: d.custom || [], videos: d.videos || {}, routines: d.routines, sessions: d.sessions.sort((x, y) => y.start - x.start), active: d.active || null };
-        save(); toast('Backup importado'); go('#/hoje');
+        migrate(d);
+        S = { ...b, settings: { ...b.settings, ...(d.settings || {}) }, custom: d.custom || [], videos: d.videos || {}, programs: d.programs, routines: d.routines, sessions: d.sessions.sort((x, y) => y.start - x.start), active: d.active || null };
+        save(); applyLook(); toast('Backup importado'); go('#/hoje');
       }
     });
   };
@@ -1022,16 +1201,123 @@ const ACT = {
   sheetOk: () => { const ctx = sheetCtx; closeSheet(); if (ctx && ctx.onOk) ctx.onOk(); },
 
   // Fichas
-  newRoutine: () => {
-    const r = { id: uid(), name: '', days: [], items: [] };
-    S.routines.push(r); save();
-    afterRender = () => { const el = $('[data-rname]'); if (el) el.focus(); };
+  newMenu: () => openSheet(`${sheetHead('Criar')}<div class="sheet-body"><div class="list">
+      <button class="row" data-act="newProgram"><div class="dot on">${I.folder}</div><div class="grow"><div class="name">Novo programa</div><div class="sub">Uma pasta com várias fichas (ex.: Push, Pull, Legs)</div></div>${I.chev}</button>
+      <button class="row" data-act="newRoutine"><div class="dot">${I.list}</div><div class="grow"><div class="name">Nova ficha avulsa</div><div class="sub">Uma ficha solta, fora de programa</div></div>${I.chev}</button>
+      <a class="row" href="#/modelos" data-act="closeSheet"><div class="dot">${I.sparkle}</div><div class="grow"><div class="name">Usar um modelo pronto</div><div class="sub">PPL, Upper/Lower, ABC, ABCDE, em casa…</div></div>${I.chev}</a>
+    </div></div>`),
+  newProgram: () => {
+    const p = { id: uid(), name: '', active: true };
+    S.programs.push(p); save(); closeSheet();
+    afterRender = () => { const el = $('[data-pname]'); if (el) el.focus(); };
+    go(`#/programa/${p.id}`);
+  },
+  newRoutine: el => {
+    const pid = el && el.dataset.prog && S.programs.some(p => p.id === el.dataset.prog) ? el.dataset.prog : null;
+    const r = { id: uid(), name: '', days: [], items: [], programId: pid };
+    S.routines.push(r); save(); closeSheet();
+    afterRender = () => { const el2 = $('[data-rname]'); if (el2) el2.focus(); };
     go(`#/ficha/${r.id}`);
   },
-  useTemplate: () => {
-    S.routines.push(...templateABC()); save();
-    toast('Modelo ABC adicionado — ajuste como quiser');
-    go('#/fichas');
+  programMenu: el => {
+    const p = S.programs.find(x => x.id === el.dataset.id);
+    openSheet(`${sheetHead(p.name || 'Programa')}<div class="sheet-body"><div class="list">
+      <button class="row" data-act="dupProgram" data-id="${p.id}"><div class="grow name">Duplicar programa</div></button>
+      <button class="row" data-act="deleteProgram" data-id="${p.id}"><div class="grow name" style="color:var(--danger)">Excluir programa</div></button>
+    </div></div>`);
+  },
+  dupProgram: el => {
+    const p = S.programs.find(x => x.id === el.dataset.id);
+    const c = { ...clone(p), id: uid(), name: (p.name || 'Programa') + ' (cópia)' };
+    S.programs.splice(S.programs.indexOf(p) + 1, 0, c);
+    for (const r of progRoutines(p.id)) {
+      const rc = clone(r); rc.id = uid(); rc.programId = c.id; rc.items.forEach(it => it.id = uid());
+      S.routines.push(rc);
+    }
+    save(); closeSheet(); go(`#/programa/${c.id}`);
+  },
+  deleteProgram: el => {
+    const p = S.programs.find(x => x.id === el.dataset.id), n = progRoutines(p.id).length;
+    openSheet(`${sheetHead('Excluir programa?')}<div class="sheet-body">
+      <p class="muted" style="margin:0 0 14px">“${esc(p.name || 'Sem nome')}” tem ${n} ficha${n === 1 ? '' : 's'}. Os treinos já registrados continuam no histórico.</p></div>
+      <div class="sheet-foot stack">
+        ${n ? `<button class="btn block" data-act="deleteProgramKeep" data-id="${p.id}">Excluir e manter as fichas como avulsas</button>` : ''}
+        <button class="btn danger block" data-act="deleteProgramAll" data-id="${p.id}">${n ? 'Excluir programa e fichas' : 'Excluir programa'}</button>
+        <button class="btn block" data-act="closeSheet">Cancelar</button>
+      </div>`);
+  },
+  deleteProgramKeep: el => {
+    const id = el.dataset.id;
+    S.routines.forEach(r => { if (r.programId === id) r.programId = null; });
+    S.programs = S.programs.filter(p => p.id !== id); save(); closeSheet(); go('#/fichas');
+  },
+  deleteProgramAll: el => {
+    const id = el.dataset.id;
+    S.routines = S.routines.filter(r => r.programId !== id);
+    S.programs = S.programs.filter(p => p.id !== id); save(); closeSheet(); go('#/fichas');
+  },
+  progUp: el => { moveInProgram(el.dataset.id, -1); save(); rerender(); },
+  progDown: el => { moveInProgram(el.dataset.id, 1); save(); rerender(); },
+  moveIntoProgram: el => {
+    const pid = el.dataset.id, loose = S.routines.filter(r => !programOf(r));
+    openSheet(`${sheetHead('Trazer fichas avulsas')}<div class="sheet-body"><div class="list">
+      ${loose.map(r => `<button class="row" data-act="moveRoutineTo" data-id="${r.id}" data-prog="${pid}"><div class="grow"><div class="name">${esc(r.name || 'Sem nome')}</div><div class="sub">${daysLabel(r.days)} · ${r.items.length} exercícios</div></div><span class="badge accent">Mover</span></button>`).join('')}
+    </div></div>`);
+  },
+  moveRoutineTo: el => {
+    const r = S.routines.find(x => x.id === el.dataset.id);
+    r.programId = el.dataset.prog;
+    // vai para o fim da lista para ficar por último no programa
+    S.routines.splice(S.routines.indexOf(r), 1); S.routines.push(r);
+    save(); toast('Ficha movida');
+    if (S.routines.some(x => !programOf(x))) ACT.moveIntoProgram({ dataset: { id: el.dataset.prog } }); else closeSheet();
+    rerender();
+  },
+
+  // Modelos prontos
+  tplFilter: el => { tplFilter = el.dataset.v; rerender(); },
+  useTpl: el => {
+    const t = tpls().find(x => x.id === el.dataset.id);
+    const hasDays = t.routines.some(r => r.days.length);
+    const othersActive = S.programs.filter(isActiveProg).length;
+    openSheet(`${sheetHead('Usar “' + t.name + '”')}<div class="sheet-body">
+      <p class="muted" style="margin:0 0 12px">Cria o programa com ${t.routines.length} ficha${t.routines.length > 1 ? 's' : ''}. Depois você pode trocar exercícios, séries e dias.</p>
+      <div class="list">
+        ${hasDays ? `<label class="row"><div class="grow"><div class="name">Usar os dias sugeridos</div>
+          <div class="sub wrap">${t.routines.map(r => `${esc(r.name.split(' — ')[0])}: ${r.days.length ? daysLabel(r.days) : 'livre'}`).join(' · ')}</div></div>
+          <span class="switch"><input type="checkbox" id="tplDays" checked><i></i></span></label>` : ''}
+        ${othersActive ? `<label class="row"><div class="grow"><div class="name">Pausar os outros programas</div>
+          <div class="sub wrap">A tela Hoje passa a mostrar só este programa</div></div>
+          <span class="switch"><input type="checkbox" id="tplOnly" checked><i></i></span></label>` : ''}
+      </div>
+      ${hasDays ? '<p class="small muted" style="margin:10px 4px 0">Sem dias fixos, o app sugere a próxima ficha na ordem a cada treino.</p>' : ''}
+    </div>
+    <div class="sheet-foot"><button class="btn primary block" data-act="tplCreate" data-id="${t.id}">Criar programa</button></div>`);
+  },
+  tplCreate: el => {
+    const t = tpls().find(x => x.id === el.dataset.id);
+    const useDays = !$('#tplDays') || $('#tplDays').checked, only = $('#tplOnly') && $('#tplOnly').checked;
+    if (only) S.programs.forEach(p => { p.active = false; });
+    const p = { id: uid(), name: t.name, active: true };
+    S.programs.push(p);
+    for (const tr of t.routines) {
+      S.routines.push({
+        id: uid(), name: tr.name, days: useDays ? [...tr.days] : [], programId: p.id,
+        items: tr.items.filter(([exId]) => getEx(exId)).map(([exId, sets, reps, rest]) => ({ id: uid(), exId, sets, reps, rest, note: '' }))
+      });
+    }
+    save(); closeSheet(); toast('Programa criado — ajuste como quiser');
+    go(`#/programa/${p.id}`);
+  },
+
+  // Aparência
+  setTheme: el => { S.settings.theme = el.dataset.v; save(); applyLook(); rerender(); },
+  setAccent: el => { S.settings.accent = el.dataset.v; save(); applyLook(); rerender(); },
+  checkUpdate: () => {
+    toast('Procurando atualização…');
+    const done = () => setTimeout(() => location.reload(), 500);
+    if (!('serviceWorker' in navigator)) { done(); return; }
+    navigator.serviceWorker.getRegistration().then(reg => reg ? reg.update() : null).catch(() => {}).then(done);
   },
   toggleDay: el => {
     const r = curRoutine(), d = +el.dataset.d;
@@ -1069,7 +1355,7 @@ const ACT = {
     const r = curRoutine();
     confirmSheet({
       title: 'Excluir ficha?', text: `“${esc(r.name || 'Sem nome')}” será removida. Os treinos já registrados continuam no histórico.`,
-      ok: 'Excluir', danger: true, onOk: () => { S.routines = S.routines.filter(x => x !== r); save(); go('#/fichas'); }
+      ok: 'Excluir', danger: true, onOk: () => { const p = programOf(r); S.routines = S.routines.filter(x => x !== r); save(); go(p ? `#/programa/${p.id}` : '#/fichas'); }
     });
   },
   startRoutine: el => {
@@ -1284,7 +1570,7 @@ const ACT = {
   wipeData: () => confirmSheet({
     title: 'Apagar tudo?', text: 'Fichas, histórico e exercícios personalizados serão apagados deste aparelho. Isso não pode ser desfeito.',
     ok: 'Apagar tudo', danger: true,
-    onOk: () => { S = blank(); save(); toast('Dados apagados'); go('#/hoje'); }
+    onOk: () => { S = blank(); save(); applyLook(); toast('Dados apagados'); go('#/hoje'); }
   })
 };
 
@@ -1322,6 +1608,9 @@ document.addEventListener('input', e => {
     save();
   } else if (t.hasAttribute('data-rname')) {
     curRoutine().name = t.value; save();
+  } else if (t.hasAttribute('data-pname')) {
+    const pr = S.programs.find(x => x.id === location.hash.split('/')[2]);
+    if (pr) { pr.name = t.value; save(); }
   } else if (t.hasAttribute('data-wnotes')) {
     S.active.notes = t.value; save();
   } else if (t.id === 'exq') {
@@ -1334,6 +1623,22 @@ document.addEventListener('change', e => {
   const t = e.target;
   if (t.dataset.setting === 'rest') { S.settings.rest = +t.value; save(); toast('Descanso padrão atualizado'); }
   else if (t.dataset.setting === 'sound') { S.settings.sound = t.checked; save(); if (t.checked) { unlockAudio(); beep(); } }
+  else if (t.dataset.setting === 'glass') { S.settings.glass = t.checked; save(); applyLook(); }
+  else if (t.hasAttribute('data-pactive')) {
+    const pr = S.programs.find(x => x.id === location.hash.split('/')[2]);
+    if (pr) { pr.active = t.checked; save(); rerender(); }
+  } else if (t.hasAttribute('data-rprog')) {
+    const r = curRoutine();
+    let v = t.value;
+    if (v === '__new') {
+      const n = prompt('Nome do novo programa', 'Meu treino');
+      if (!n || !n.trim()) { rerender(); return; }
+      const pr = { id: uid(), name: n.trim(), active: true };
+      S.programs.push(pr); v = pr.id;
+    }
+    r.programId = v || null; save(); rerender();
+    toast(v ? 'Ficha movida para o programa' : 'Ficha agora é avulsa');
+  }
   else if (t.id === 'importFile' && t.files[0]) { importData(t.files[0]); t.value = ''; }
 });
 // Seleciona o conteúdo ao focar nos campos de carga/reps (agiliza a edição)
@@ -1347,10 +1652,23 @@ window.addEventListener('hashchange', () => { if (!$('#sheet').hidden) closeShee
 document.addEventListener('visibilitychange', () => { if (!document.hidden) tick(); });
 
 /* ================= Início ================= */
+applyLook();
 setInterval(tick, 500);
 route();
 
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
-  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(reg => {
+      // Procura versão nova sempre que o app volta para a tela
+      document.addEventListener('visibilitychange', () => { if (!document.hidden) reg.update().catch(() => {}); });
+    }).catch(() => {});
+  });
+  // Versão nova instalada: recarrega uma vez para usar os arquivos novos (os dados ficam no aparelho)
+  const hadController = !!navigator.serviceWorker.controller;
+  let reloading = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController || reloading) return;
+    reloading = true; location.reload();
+  });
 }
