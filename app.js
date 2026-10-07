@@ -86,7 +86,7 @@ const I = {
 /* ================= Estado ================= */
 function blank() {
   return {
-    v: 1, settings: { rest: 90, sound: true, theme: 'auto', accent: 'limao', glass: true, keepAwake: true, iosTimer: false, timerShortcut: 'Descanso Ficha' },
+    v: 1, settings: { rest: 90, sound: true, theme: 'auto', accent: 'limao', style: 'glass', keepAwake: true, iosTimer: false, timerShortcut: 'Descanso Ficha' },
     custom: [], programs: [], routines: [], sessions: [], active: null, videos: {}, profile: null, body: [], bodyGoal: {}
   };
 }
@@ -100,7 +100,12 @@ function migrate(d) {
       d.routines.forEach(r => { r.programId = p.id; });
     }
   }
-  if (d.settings) delete d.settings.lockTimer; // opção antiga (descanso por áudio), removida
+  if (d.settings) {
+    delete d.settings.lockTimer; // opção antiga (descanso por áudio), removida
+    // "Efeito vidro" (liga/desliga) virou o estilo visual: clássico, Liquid Glass ou Material You
+    if (!d.settings.style && 'glass' in d.settings) d.settings.style = d.settings.glass ? 'glass' : 'classic';
+    delete d.settings.glass;
+  }
   return d;
 }
 function load() {
@@ -314,32 +319,149 @@ const ACCENTS = [
   { id: 'mono', name: 'Grafite', dark: ['#F2F3EF', '#0E1013', '#F2F3EF'], light: ['#15181C', '#FFFFFF', '#15181C'] }
 ];
 const THEMES = [['auto', 'Automático'], ['light', 'Claro'], ['dark', 'Escuro'], ['black', 'Preto']];
+const STYLES = [
+  ['classic', 'Clássico', 'Visual sólido e simples, sem transparências'],
+  ['glass', 'Liquid Glass', 'Barra flutuante e painéis translúcidos, no estilo do iOS 26'],
+  ['material', 'Material You', 'Estilo do Android: cores tonais geradas a partir da cor de destaque, formas arredondadas e efeito de toque']
+];
 const lightMQ = matchMedia('(prefers-color-scheme: light)');
 function schemeNow() {
   const t = S.settings.theme;
   return t === 'light' || (t === 'auto' && lightMQ.matches) ? 'light' : 'dark';
 }
+function styleNow() { return STYLES.some(x => x[0] === S.settings.style) ? S.settings.style : 'glass'; }
+function accentNow() { return ACCENTS.find(x => x.id === S.settings.accent) || ACCENTS[0]; }
 function accentVars(scheme) {
-  const a = (ACCENTS.find(x => x.id === S.settings.accent) || ACCENTS[0])[scheme];
+  const a = accentNow()[scheme];
   const [r, g, b] = [1, 3, 5].map(i => parseInt(a[0].slice(i, i + 2), 16));
   return { '--accent': a[0], '--accent-ink': a[1], '--accent-text': a[2], '--accent-soft': `rgba(${r}, ${g}, ${b}, .16)` };
 }
+
+/* Material You: paleta tonal como a do Android 12+ ("Tonal Spot"), gerada a partir da cor de destaque.
+   Tom = luminosidade L* do Material 3 (0 preto, 100 branco); matiz e croma em OKLCH, ajustados ao sRGB. */
+const MD = (() => {
+  const lin = c => c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  const gam = c => c <= 0.0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - 0.055;
+  function oklch(hex) {
+    const [r, g, b] = [1, 3, 5].map(i => lin(parseInt(hex.slice(i, i + 2), 16) / 255));
+    const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+    const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+    const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+    const A = 1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s;
+    const B = 0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s;
+    return [0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s, Math.hypot(A, B), Math.atan2(B, A)];
+  }
+  function rgbOf(L, C, h) {
+    const a = C * Math.cos(h), b = C * Math.sin(h);
+    const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3;
+    const m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3;
+    const s = (L - 0.0894841775 * a - 1.2914855480 * b) ** 3;
+    return [4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+      -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+      -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s];
+  }
+  const ok = c => c.every(v => v >= -1e-4 && v <= 1.0001);
+  function fit(L, C, h) { // reduz o croma até a cor existir no sRGB
+    if (ok(rgbOf(L, C, h))) return rgbOf(L, C, h);
+    let lo = 0, hi = C;
+    for (let i = 0; i < 14; i++) { const mid = (lo + hi) / 2; if (ok(rgbOf(L, mid, h))) lo = mid; else hi = mid; }
+    return rgbOf(L, lo, h);
+  }
+  const lum = c => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  const toneY = t => { const f = (t + 16) / 116; return f ** 3 > 216 / 24389 ? f ** 3 : t / (24389 / 27); };
+  const memo = new Map();
+  function tone(t, C, h) {
+    const key = `${t}|${C}|${h.toFixed(3)}`;
+    if (memo.has(key)) return memo.get(key);
+    let c = [t / 100, t / 100, t / 100];
+    if (t > 0 && t < 100) {
+      const y = toneY(t);
+      let lo = 0, hi = 1;
+      for (let i = 0; i < 18; i++) { const mid = (lo + hi) / 2; c = fit(mid, C, h); if (lum(c) < y) lo = mid; else hi = mid; }
+    }
+    const hex = '#' + c.map(v => Math.round(gam(Math.min(1, Math.max(0, v))) * 255).toString(16).padStart(2, '0')).join('');
+    memo.set(key, hex);
+    return hex;
+  }
+  // Paletas: primária, secundária, terciária (matiz +60°), neutra e neutra variante. Cor sem saturação → tons de cinza.
+  function palettes(seed) {
+    const [, c, h] = oklch(seed), gray = c < 0.03, k = gray ? 0 : 1;
+    const pal = (C, hh = h) => t => tone(t, C * k, hh);
+    return { gray, p: pal(0.11), s: pal(0.045), t: pal(0.07, h + Math.PI / 3), n: pal(0.012), nv: pal(0.022), e: t => tone(t, 0.17, 0.5) };
+  }
+  // Papéis de cor do Material 3 → variáveis do app
+  function vars(seed, scheme, black) {
+    const { gray, p, s, t, n, nv, e } = palettes(seed), d = scheme === 'dark';
+    const T = (dark, light) => d ? dark : light;
+    return {
+      '--bg': d && black ? '#000000' : T(n(6), n(98)),
+      '--surface': T(n(black ? 6 : 12), n(94)),
+      '--surface-2': T(n(black ? 10 : 17), n(92)),
+      '--surface-3': T(n(black ? 14 : 22), n(90)),
+      '--line': T(nv(30), nv(80)),
+      '--text': T(n(90), n(10)),
+      '--muted': T(nv(80), nv(30)),
+      '--faint': T(nv(60), nv(50)),
+      '--accent': gray ? T(p(90), p(20)) : T(p(80), p(40)),
+      '--accent-ink': gray ? T(p(10), p(100)) : T(p(20), p(100)),
+      '--accent-text': gray ? T(p(90), p(20)) : T(p(80), p(40)),
+      '--accent-soft': T(s(30), s(90)),
+      '--danger': T(e(80), e(40)),
+      '--danger-soft': T(e(30), e(90)),
+      '--md-surface-low': d && black ? n(4) : T(n(10), n(96)),
+      '--md-primary-container': T(p(30), p(90)),
+      '--md-on-primary-container': T(p(90), p(10)),
+      '--md-secondary-container': T(s(30), s(90)),
+      '--md-on-secondary-container': T(s(90), s(10)),
+      '--md-tertiary-container': T(t(30), t(90)),
+      '--md-on-tertiary-container': T(t(90), t(10)),
+      '--md-inverse-surface': T(n(90), n(20)),
+      '--md-inverse-on-surface': T(n(20), n(95))
+    };
+  }
+  // Amostra da cor em Ajustes: primária em cima, secundária e terciária embaixo (como no Android)
+  function swatch(seed, scheme) {
+    const { gray, p, s, t } = palettes(seed), d = scheme === 'dark';
+    return [gray ? p(d ? 90 : 20) : p(d ? 80 : 40), s(d ? 70 : 60), t(d ? 70 : 60), gray ? p(d ? 10 : 100) : p(d ? 20 : 100)];
+  }
+  return { vars, swatch };
+})();
+// Cor de origem do Material You: a versão viva da cor de destaque (igual nos temas claro e escuro)
+function mdSeed(a = accentNow()) { return a.dark[0]; }
+function lookVars(scheme) {
+  if (styleNow() !== 'material') return accentVars(scheme);
+  return MD.vars(mdSeed(), scheme, S.settings.theme === 'black');
+}
 function applyLook() {
-  const root = document.documentElement, scheme = schemeNow();
+  const root = document.documentElement, scheme = schemeNow(), style = styleNow();
   root.dataset.scheme = scheme;
   root.toggleAttribute('data-black', S.settings.theme === 'black');
-  root.toggleAttribute('data-glass', !!S.settings.glass);
-  for (const [k, v] of Object.entries(accentVars(scheme))) root.style.setProperty(k, v);
+  root.toggleAttribute('data-glass', style === 'glass');
+  root.toggleAttribute('data-material', style === 'material');
+  [...root.style].filter(k => k.startsWith('--')).forEach(k => root.style.removeProperty(k));
+  for (const [k, v] of Object.entries(lookVars(scheme))) root.style.setProperty(k, v);
   const bg = getComputedStyle(root).getPropertyValue('--bg').trim();
   document.querySelectorAll('meta[name="theme-color"]').forEach(m => { m.removeAttribute('media'); m.content = bg; });
   // Cópia leve para o index.html aplicar o tema antes do app carregar (evita piscar)
   try {
     localStorage.setItem('ficha.look', JSON.stringify({
-      theme: S.settings.theme, glass: !!S.settings.glass, dark: accentVars('dark'), light: accentVars('light')
+      theme: S.settings.theme, style, dark: lookVars('dark'), light: lookVars('light')
     }));
   } catch (e) { /* ignora */ }
 }
 lightMQ.addEventListener && lightMQ.addEventListener('change', () => { if (S.settings.theme === 'auto') applyLook(); });
+// Material You: onda de toque (ripple) nos botões e linhas
+document.addEventListener('pointerdown', e => {
+  if (!document.documentElement.hasAttribute('data-material')) return;
+  const el = e.target.closest('.btn, .row, .chip, .seg button, .icon-btn, .pick, .kv-btn, .sets .check');
+  if (!el || el.disabled) return;
+  const r = el.getBoundingClientRect(), size = Math.hypot(r.width, r.height) * 2;
+  const w = document.createElement('span');
+  w.className = 'ripple';
+  w.style.cssText = `width:${size}px;height:${size}px;left:${e.clientX - r.left - size / 2}px;top:${e.clientY - r.top - size / 2}px`;
+  el.appendChild(w);
+  w.addEventListener('animationend', () => w.remove());
+});
 
 /* ================= UI: toast, sheet, som ================= */
 let toastTimer;
@@ -1152,21 +1274,22 @@ function viewSessao(id) {
 /* ================= Tela: Ajustes ================= */
 function viewAjustes() {
   const standalone = window.navigator.standalone || matchMedia('(display-mode: standalone)').matches;
-  const scheme = schemeNow();
+  const scheme = schemeNow(), style = styleNow();
   return `<div class="top"></div><h1 class="title">Ajustes</h1>
     <h2 class="section">Aparência</h2>
     <div class="card look">
       <div class="look-label">Tema</div>
       <div class="seg" role="radiogroup" aria-label="Tema">${THEMES.map(([v, l]) => `<button class="${S.settings.theme === v ? 'on' : ''}" data-act="setTheme" data-v="${v}" role="radio" aria-checked="${S.settings.theme === v}">${l}</button>`).join('')}</div>
-      <div class="look-label">Cor de destaque</div>
+      <div class="look-label">Estilo</div>
+      <div class="seg seg3" role="radiogroup" aria-label="Estilo">${STYLES.map(([v, l]) => `<button class="${style === v ? 'on' : ''}" data-act="setStyle" data-v="${v}" role="radio" aria-checked="${style === v}">${l}</button>`).join('')}</div>
+      <p class="small muted look-desc">${STYLES.find(x => x[0] === style)[2]}</p>
+      <div class="look-label">${style === 'material' ? 'Cor (a paleta é gerada a partir dela)' : 'Cor de destaque'}</div>
       <div class="swatches" role="radiogroup" aria-label="Cor de destaque">${ACCENTS.map(a => {
-        const on = (S.settings.accent || 'limao') === a.id, c = a[scheme];
-        return `<button class="sw ${on ? 'on' : ''}" data-act="setAccent" data-v="${a.id}" role="radio" aria-checked="${on}" style="--sw:${c[0]};--sw-ink:${c[1]}"><i>${on ? I.check : ''}</i><span>${a.name}</span></button>`;
+        const on = (S.settings.accent || 'limao') === a.id;
+        const c = style === 'material' ? MD.swatch(mdSeed(a), scheme) : a[scheme];
+        const vars = style === 'material' ? `--sw:${c[0]};--sw2:${c[1]};--sw3:${c[2]};--sw-ink:${c[3]}` : `--sw:${c[0]};--sw-ink:${c[1]}`;
+        return `<button class="sw ${on ? 'on' : ''}" data-act="setAccent" data-v="${a.id}" role="radio" aria-checked="${on}" style="${vars}"><i>${on ? I.check : ''}</i><span>${a.name}</span></button>`;
       }).join('')}</div>
-    </div>
-    <div class="list" style="margin-top:10px">
-      <label class="row"><div class="grow"><div class="name">Efeito vidro (Liquid Glass)</div><div class="sub wrap">Barra flutuante e painéis translúcidos, no estilo do iOS 26</div></div>
-        <span class="switch"><input type="checkbox" data-setting="glass" ${S.settings.glass ? 'checked' : ''}><i></i></span></label>
     </div>
 
     <h2 class="section">Treino</h2>
@@ -1214,7 +1337,7 @@ function viewAjustes() {
       <span class="muted">O app abre em tela cheia, funciona offline e mantém seus dados.</span></div>`}
 
     <div style="text-align:center;margin-top:22px"><button class="link-btn" data-act="checkUpdate">Procurar atualização</button></div>
-    <p class="small muted" style="text-align:center;margin-top:6px">Ficha · versão 1.6<br>
+    <p class="small muted" style="text-align:center;margin-top:6px">Ficha · versão 1.7<br>
       Fotos e músculos dos exercícios: <a href="https://github.com/yuhonas/free-exercise-db" target="_blank" rel="noopener" style="text-decoration:underline">free-exercise-db</a> (domínio público)<br>
       Desenho do mapa muscular: <a href="https://github.com/GV79/react-body-highlighter" target="_blank" rel="noopener" style="text-decoration:underline">react-body-highlighter</a> (MIT)</p>`;
 }
@@ -1405,6 +1528,7 @@ const ACT = {
   // Aparência
   setTheme: el => { S.settings.theme = el.dataset.v; save(); applyLook(); rerender(); },
   setAccent: el => { S.settings.accent = el.dataset.v; save(); applyLook(); rerender(); },
+  setStyle: el => { S.settings.style = el.dataset.v; save(); applyLook(); rerender(); },
   checkUpdate: () => {
     toast('Procurando atualização…');
     const done = () => setTimeout(() => location.reload(), 500);
@@ -1731,7 +1855,6 @@ document.addEventListener('change', e => {
   const t = e.target;
   if (t.dataset.setting === 'rest') { S.settings.rest = +t.value; save(); toast('Descanso padrão atualizado'); }
   else if (t.dataset.setting === 'sound') { S.settings.sound = t.checked; save(); if (t.checked) { unlockAudio(); beep(); } }
-  else if (t.dataset.setting === 'glass') { S.settings.glass = t.checked; save(); applyLook(); }
   else if (t.dataset.setting === 'keepAwake') { S.settings.keepAwake = t.checked; save(); syncWakeLock(); }
   else if (t.dataset.setting === 'iosTimer') { S.settings.iosTimer = t.checked; save(); if (t.checked) iosTimerHelp(); }
   else if (t.hasAttribute('data-pactive')) {

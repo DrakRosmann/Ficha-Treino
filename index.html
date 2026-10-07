@@ -19,14 +19,16 @@
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
   <link rel="stylesheet" href="styles.css">
-  <!-- Aplica tema, cor e efeito vidro salvos antes de desenhar a tela (evita piscar) -->
+  <!-- Aplica tema, cor e estilo salvos antes de desenhar a tela (evita piscar) -->
   <script>
     try {
-      var L = JSON.parse(localStorage.getItem('ficha.look') || '{"theme":"auto","glass":true}'), d = document.documentElement;
+      var L = JSON.parse(localStorage.getItem('ficha.look') || '{"theme":"auto","style":"glass"}'), d = document.documentElement;
       var sc = L.theme === 'light' || (L.theme === 'auto' && matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark';
+      var st = L.style || (L.glass ? 'glass' : 'classic');
       d.setAttribute('data-scheme', sc);
       if (L.theme === 'black') d.setAttribute('data-black', '');
-      if (L.glass) d.setAttribute('data-glass', '');
+      if (st === 'glass') d.setAttribute('data-glass', '');
+      if (st === 'material') d.setAttribute('data-material', '');
       var v = L[sc] || {};
       for (var k in v) d.style.setProperty(k, v[k]);
     } catch (e) {}
