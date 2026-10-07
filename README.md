@@ -13,7 +13,10 @@ Funciona no iPhone pela Tela de Início, offline, sem App Store, sem Mac e sem c
 - **Assistente de treino**: você informa objetivo, experiência, dias por semana, tempo por treino, local, peso, altura, idade, grupos prioritários e restrições (joelho, lombar, ombro, punho, quadril, sem impacto, pressão alta) e recebe 3 opções de programa para escolher, com a explicação de cada uma.
   - **Sem IA** (padrão): regras de treino que escolhem a divisão, os exercícios seguros para as restrições, séries, repetições e descanso conforme o objetivo, e cabem no tempo informado. Funciona offline e é grátis.
   - **Com IA (Claude)**: entende observações em texto livre (ex.: “hérnia de disco”). Precisa de internet e de uma chave da API da Anthropic, salva só no aparelho (fica fora do backup). O uso é cobrado pela Anthropic na sua conta.
-- **Aparência**: tema automático, claro, escuro ou preto (OLED), 10 cores de destaque e efeito vidro no estilo Liquid Glass do iOS 26 (barra de abas flutuante e painéis translúcidos).
+- **Aparência**: tema automático, claro, escuro ou preto (OLED), 10 cores de destaque e três estilos:
+  - **Clássico**: visual sólido, sem transparências.
+  - **Liquid Glass**: no estilo do iOS 26, com barra de abas flutuante e painéis translúcidos.
+  - **Material You**: no estilo do Android. As cores tonais (fundo, cartões, botões e contêineres) são geradas a partir da cor de destaque, como no Material 3. Tem cantos arredondados, botões em cápsula, barra de navegação com indicador, interruptores e campos do Material, efeito de toque e a fonte Google Sans Flex.
 - **Hoje**: mostra a ficha do dia, a semana com dias planejados/treinados e estatísticas.
 - **Timer do iPhone**: opção de usar o Timer do relógio do iPhone no descanso. Ao terminar uma série, o app chama um atalho do app **Atalhos** (criado uma vez, com a ação “Iniciar Timer”), e o timer de verdade aparece na tela bloqueada e na Dynamic Island, com o alarme do iPhone. O passo a passo está em **Ajustes → Configurar o Timer do iPhone**. Também dá para manter a tela ligada durante o treino. (Um app da web não pode criar Live Activities próprias; isso só existe em apps nativos da App Store.)
 - **Modo treino**: marque cada série, veja o que fez no último treino, cargas pré-preenchidas, séries de aquecimento, cronômetro de descanso com aviso sonoro, adicionar/trocar/reordenar exercícios no meio do treino.
@@ -61,7 +64,7 @@ No Chrome/Firefox use o modo de dispositivo móvel (F12 → ícone de celular) p
 
 ## Atualizar o app
 
-Edite os arquivos, aumente a versão em `sw.js` (`const CACHE = 'ficha-v8'`) e faça `git push`.
+Edite os arquivos, aumente a versão em `sw.js` (`const CACHE = 'ficha-v9'`) e faça `git push`.
 O app procura a versão nova sozinho sempre que é aberto (com internet) e recarrega uma vez quando encontra. Se quiser forçar, use **Ajustes → Procurar atualização**. Os dados não são apagados.
 
 ## Estrutura
@@ -76,6 +79,7 @@ O app procura a versão nova sozinho sempre que é aberto (com internet) e recar
 | `body.js` | Aba Corpo (medidas, composição corporal, gráficos) e mapa muscular |
 | `assistant.js` | Assistente de treino: regras de montagem (padrões de movimento, restrições, séries por objetivo) e integração com o Claude |
 | `vendor/anthropic-sdk.mjs` | SDK oficial da Anthropic empacotado para o navegador (carregado só quando a IA é usada) |
+| `fonts/` | Fonte Google Sans Flex do estilo Material You (só o alfabeto latino) |
 | `img/ex/`, `img/thumb/` | Fotos da execução (início e fim lado a lado) e miniaturas, em WebP |
 | `sw.js` | Service worker (cache offline) |
 | `manifest.webmanifest`, `icons/` | Instalação e ícones |
@@ -83,6 +87,8 @@ O app procura a versão nova sozinho sempre que é aberto (com internet) e recar
 Sem frameworks nem build: é HTML, CSS e JavaScript puro.
 
 ## Créditos
+
+A fonte do estilo Material You é a [Google Sans Flex](https://github.com/googlefonts/googlesans-flex) (SIL Open Font License 1.1; licença em `fonts/OFL.txt`).
 
 O desenho do mapa muscular é adaptado do [react-body-highlighter](https://github.com/GV79/react-body-highlighter) (licença MIT, © 2020 GV79).
 
