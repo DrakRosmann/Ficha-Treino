@@ -79,6 +79,7 @@ const I = {
   download: '<svg viewBox="0 0 24 24"><path d="M12 4.5v11M7 11l5 5 5-5M5 19.5h14"/></svg>',
   folder: '<svg viewBox="0 0 24 24"><path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/></svg>',
   sparkle: '<svg viewBox="0 0 24 24"><path d="M11 3.5l1.9 5 5 1.9-5 1.9-1.9 5-1.9-5-5-1.9 5-1.9z"/><path d="M18.5 14.5l.9 2.1 2.1.9-2.1.9-.9 2.1-.9-2.1-2.1-.9 2.1-.9z"/></svg>',
+  body: '<svg viewBox="0 0 24 24"><circle cx="12" cy="4.6" r="2.1"/><path d="M4.5 8.6c2.6.9 5 1.3 7.5 1.3s4.9-.4 7.5-1.3M12 9.9v5.4M12 15.3l-3.4 6.2M12 15.3l3.4 6.2"/></svg>',
   palette: '<svg viewBox="0 0 24 24"><path d="M12 3.5a8.5 8.5 0 0 0 0 17c1.2 0 1.8-.8 1.8-1.7 0-1.3-1.2-1.6-1.2-2.8 0-1 .8-1.7 1.8-1.7h2.1a4 4 0 0 0 4-4c0-3.8-3.8-6.8-8.5-6.8z"/><circle cx="7.8" cy="11" r="1"/><circle cx="10.5" cy="7.5" r="1"/><circle cx="15" cy="7.8" r="1"/></svg>'
 };
 
@@ -86,7 +87,7 @@ const I = {
 function blank() {
   return {
     v: 1, settings: { rest: 90, sound: true, theme: 'auto', accent: 'limao', glass: true },
-    custom: [], programs: [], routines: [], sessions: [], active: null, videos: {}
+    custom: [], programs: [], routines: [], sessions: [], active: null, videos: {}, profile: null, body: [], bodyGoal: {}
   };
 }
 // Dados antigos (sem programas): as fichas existentes viram o programa "Meu treino"
@@ -144,6 +145,7 @@ function demo(ex) {
     <b class="demo-step s1">1 · Início</b><b class="demo-step s2">2 · Fim</b></div>`;
 }
 function musclesHTML(ex) {
+  if (typeof muscleMapHTML === 'function') return muscleMapHTML(ex);
   if (!ex || !(ex.primary || []).length) return '';
   const tag = (c, p) => `<span class="mtag ${p ? 'p' : ''}">${esc(MUSCLES[c] || c)}</span>`;
   return `<div class="muscles">${ex.primary.map(c => tag(c, true)).join('')}${(ex.secondary || []).map(c => tag(c, false)).join('')}</div>`;
@@ -274,6 +276,28 @@ function moveInProgram(id, d) {
 }
 const letter = i => String.fromCharCode(65 + (i % 26));
 
+// Folha de confirmação ao criar um programa a partir de um modelo ou do assistente
+let pendingProgram = null;
+function openUseProgram(def) {
+  pendingProgram = def;
+  const hasDays = def.routines.some(r => r.days.length);
+  const othersActive = S.programs.filter(isActiveProg).length;
+  const n = def.routines.length;
+  openSheet(`${sheetHead('Usar “' + def.name + '”')}<div class="sheet-body">
+    <p class="muted" style="margin:0 0 12px">Cria o programa com ${n} ficha${n > 1 ? 's' : ''}. Depois você pode trocar exercícios, séries e dias.</p>
+    <div class="list">
+      ${hasDays ? `<label class="row"><div class="grow"><div class="name">Usar os dias sugeridos</div>
+        <div class="sub wrap">${def.routines.map(r => `${esc(r.name.split(' — ')[0])}: ${r.days.length ? daysLabel(r.days) : 'livre'}`).join(' · ')}</div></div>
+        <span class="switch"><input type="checkbox" id="tplDays" checked><i></i></span></label>` : ''}
+      ${othersActive ? `<label class="row"><div class="grow"><div class="name">Pausar os outros programas</div>
+        <div class="sub wrap">A tela Hoje passa a mostrar só este programa</div></div>
+        <span class="switch"><input type="checkbox" id="tplOnly" checked><i></i></span></label>` : ''}
+    </div>
+    ${hasDays ? '<p class="small muted" style="margin:10px 4px 0">Sem dias fixos, o app sugere a próxima ficha na ordem a cada treino.</p>' : ''}
+  </div>
+  <div class="sheet-foot"><button class="btn primary block" data-act="createPending">Criar programa</button></div>`);
+}
+
 /* ================= Aparência ================= */
 // Cores de destaque: [destaque, texto sobre o destaque, destaque usado como texto] para tema escuro e claro
 const ACCENTS = [
@@ -384,6 +408,8 @@ const routes = [
   [/^#\/programa\/([\w-]+)$/, viewPrograma, 'fichas'],
   [/^#\/modelos$/, viewModelos, 'fichas'],
   [/^#\/modelo\/([\w-]+)$/, viewModelo, 'fichas'],
+  [/^#\/corpo$/, () => typeof viewCorpo === 'function' ? viewCorpo() : viewUpdating(), 'corpo'],
+  [/^#\/assistente$/, () => typeof viewAssistente === 'function' ? viewAssistente() : viewUpdating(), 'fichas'],
   [/^#\/exercicios$/, viewExercicios, 'exercicios'],
   [/^#\/exercicio\/([\w-]+)$/, viewExercicio, 'exercicios'],
   [/^#\/historico$/, viewHistorico, 'historico'],
@@ -426,6 +452,12 @@ function topBar({ back, right = '' } = {}) {
 }
 function emptyState(icon, title, text, actions = '') {
   return `<div class="empty">${icon}<b>${esc(title)}</b><div>${text}</div>${actions ? `<div class="stack" style="margin-top:18px">${actions}</div>` : ''}</div>`;
+}
+
+// Arquivo novo ainda não carregado (app no meio de uma atualização)
+function viewUpdating() {
+  return topBar({ back: '#/fichas' }) + `<div class="card">${emptyState(I.download, 'Atualizando o app', 'Esta função chegou numa versão nova. Recarregue para usar.',
+    `<button class="btn primary block" data-act="checkUpdate">Recarregar</button>`)}</div>`;
 }
 
 /* ================= Tela: Hoje ================= */
@@ -484,7 +516,8 @@ function viewHoje() {
   } else if (!S.routines.length) {
     html += `<div class="card">${emptyState(I.list, 'Nenhuma ficha ainda',
       'Crie suas fichas de treino escolhendo os exercícios de cada dia, ou comece com um programa pronto (PPL, Upper/Lower, ABC…) e ajuste do seu jeito.',
-      `<a class="btn primary block" href="#/modelos">${I.sparkle}Ver modelos prontos</a>
+      `<a class="btn primary block" href="#/assistente">${I.sparkle}Montar meu treino</a>
+       <a class="btn block" href="#/modelos">${I.list}Ver modelos prontos</a>
        <button class="btn block" data-act="newRoutine">${I.plus}Criar minha ficha</button>`)}</div>`;
   } else {
     for (const r of today) {
@@ -545,7 +578,8 @@ function routineRow(r, i) {
 }
 function viewFichas() {
   let html = topBar({ right: `<button class="link-btn" data-act="newMenu">${I.plus.replace('<svg', '<svg class="inline-ic"')}Novo</button>` }) + `<h1 class="title">Fichas</h1>
-    <a class="tpl-banner" href="#/modelos"><span class="tpl-ic">${I.sparkle}</span><div class="grow"><b>Modelos prontos</b><span>PPL, Upper/Lower, ABC, ABCDE, em casa e mais</span></div>${I.chev}</a>`;
+    <a class="tpl-banner" href="#/assistente"><span class="tpl-ic">${I.sparkle}</span><div class="grow"><b>Montar meu treino</b><span>Responda algumas perguntas e escolha entre 3 opções</span></div>${I.chev}</a>
+    <a class="tpl-banner alt" href="#/modelos"><span class="tpl-ic">${I.list}</span><div class="grow"><b>Modelos prontos</b><span>PPL, Upper/Lower, ABC, ABCDE, em casa e mais</span></div>${I.chev}</a>`;
   if (!S.routines.length && !S.programs.length) {
     return html + `<div class="card">${emptyState(I.list, 'Nenhuma ficha ainda',
       'Uma <b>ficha</b> é a lista de exercícios de um dia de treino. Um <b>programa</b> agrupa várias fichas — por exemplo “Meu treino” com Push, Pull e Legs.',
@@ -786,27 +820,32 @@ function viewExercicio(id) {
   return html;
 }
 
-function chartSVG(points, unit) {
-  if (points.length < 2) return `<div class="empty small" style="padding:18px">Faça este exercício em pelo menos 2 treinos para ver o gráfico.</div>`;
-  const pts = points.slice(-24);
+function chartSVG(points, unit, opts = {}) {
+  const { time = false, goal = null, better = 'up', dec = 1, max = 24, empty } = opts;
+  if (points.length < 2) return `<div class="empty small" style="padding:18px">${empty || 'Faça este exercício em pelo menos 2 treinos para ver o gráfico.'}</div>`;
+  const pts = points.slice(-max);
   const W = 340, H = 180, pl = 40, pr = 12, pt = 14, pb = 26;
-  const vs = pts.map(p => p.v);
+  const vs = pts.map(p => p.v).concat(goal != null ? [goal] : []);
   let lo = Math.min(...vs), hi = Math.max(...vs);
   if (lo === hi) { lo -= 1; hi += 1; }
   const pad = (hi - lo) * 0.12; lo = Math.max(0, lo - pad); hi += pad;
-  const x = i => pl + i * (W - pl - pr) / (pts.length - 1);
+  const t0 = pts[0].t, t1 = pts[pts.length - 1].t;
+  const x = (p, i) => time && t1 > t0 ? pl + (p.t - t0) / (t1 - t0) * (W - pl - pr) : pl + i * (W - pl - pr) / (pts.length - 1);
   const y = v => pt + (1 - (v - lo) / (hi - lo)) * (H - pt - pb);
-  const line = pts.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(p.v).toFixed(1)}`).join('');
-  const area = `${line}L${x(pts.length - 1).toFixed(1)},${H - pb}L${pl},${H - pb}Z`;
+  const line = pts.map((p, i) => `${i ? 'L' : 'M'}${x(p, i).toFixed(1)},${y(p.v).toFixed(1)}`).join('');
+  const area = `${line}L${x(pts[pts.length - 1], pts.length - 1).toFixed(1)},${H - pb}L${pl},${H - pb}Z`;
   const ticks = [lo, (lo + hi) / 2, hi];
-  const grid = ticks.map(v => `<line class="grid" x1="${pl}" x2="${W - pr}" y1="${y(v)}" y2="${y(v)}"/><text x="${pl - 6}" y="${y(v) + 4}" text-anchor="end">${fmt(v, hi - lo < 10 ? 1 : 0)}</text>`).join('');
-  const dots = pts.map((p, i) => `<circle class="pt ${i === pts.length - 1 ? 'last' : ''}" cx="${x(i)}" cy="${y(p.v)}" r="${i === pts.length - 1 ? 4.5 : 3}"/>`).join('');
+  const grid = ticks.map(v => `<line class="grid" x1="${pl}" x2="${W - pr}" y1="${y(v)}" y2="${y(v)}"/><text x="${pl - 6}" y="${y(v) + 4}" text-anchor="end">${fmt(v, hi - lo < 10 ? Math.max(1, dec) : 0)}</text>`).join('');
+  const showAll = pts.length <= 40;
+  const dots = pts.map((p, i) => i === pts.length - 1 || showAll ? `<circle class="pt ${i === pts.length - 1 ? 'last' : ''}" cx="${x(p, i)}" cy="${y(p.v)}" r="${i === pts.length - 1 ? 4.5 : 3}"/>` : '').join('');
+  const goalLine = goal != null ? `<line class="goal" x1="${pl}" x2="${W - pr}" y1="${y(goal)}" y2="${y(goal)}"/><text class="goal-t" x="${W - pr}" y="${y(goal) - 4}" text-anchor="end">meta ${fmt(goal, dec)}</text>` : '';
   const lastV = pts[pts.length - 1].v, firstV = pts[0].v, diff = lastV - firstV;
+  const good = better === 'up' ? diff >= 0 : better === 'down' ? diff <= 0 : false;
   return `<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
-      <div><b style="font-size:24px" class="num">${fmt(lastV)}</b> <span class="muted small">${unit}</span></div>
-      <span class="badge ${diff >= 0 ? 'accent' : ''} num">${diff >= 0 ? '+' : ''}${fmt(diff)} ${unit}</span></div>
+      <div><b style="font-size:24px" class="num">${fmt(lastV, dec)}</b> <span class="muted small">${unit}</span></div>
+      <span class="badge ${good ? 'accent' : ''} num">${diff >= 0 ? '+' : '−'}${fmt(Math.abs(diff), dec)} ${unit}</span></div>
     <svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Gráfico de evolução">
-      ${grid}<path class="area" d="${area}"/><path class="line" d="${line}"/>${dots}
+      ${grid}${goalLine}<path class="area" d="${area}"/><path class="line" d="${line}"/>${dots}
       <text x="${pl}" y="${H - 6}">${dateShort(pts[0].t)}</text><text x="${W - pr}" y="${H - 6}" text-anchor="end">${dateShort(pts[pts.length - 1].t)}</text>
     </svg>`;
 }
@@ -1095,6 +1134,14 @@ function viewAjustes() {
     </div>
     <p class="small muted" style="margin:10px 4px 0">Sem baixar, cada foto fica salva depois da primeira vez que aparece. Use no Wi-Fi.</p>` : ''}
 
+    <h2 class="section">Inteligência artificial</h2>
+    <div class="list">
+      <button class="row" data-act="aiKeyEdit"><div class="grow"><div class="name">Chave da API da Anthropic</div>
+        <div class="sub">${typeof aiKey === 'function' && aiKey() ? 'Configurada neste aparelho' : 'Não configurada — necessária para montar treino com IA'}</div></div>${I.chev}</button>
+      <a class="row" href="#/assistente"><div class="grow"><div class="name">Assistente de treino</div><div class="sub">Monta opções de programa a partir do seu perfil</div></div>${I.chev}</a>
+    </div>
+    <p class="small muted" style="margin:10px 4px 0">A IA usa o Claude, da Anthropic, e é cobrada na sua conta da Anthropic. Sem chave, o assistente funciona com regras de treino, offline e grátis.</p>
+
     <h2 class="section">Seus dados</h2>
     <div class="list">
       <button class="row" data-act="exportData"><div class="grow"><div class="name">Exportar backup</div><div class="sub">Salve um arquivo .json no app Arquivos ou iCloud</div></div>${I.chev}</button>
@@ -1103,7 +1150,7 @@ function viewAjustes() {
       <a class="row" href="#/modelos"><div class="grow"><div class="name">Modelos de treino prontos</div><div class="sub">PPL, Upper/Lower, ABC, ABCDE, em casa e mais</div></div>${I.chev}</a>
       <button class="row" data-act="wipeData"><div class="grow"><div class="name" style="color:var(--danger)">Apagar todos os dados</div></div></button>
     </div>
-    <p class="small muted" style="margin:10px 4px 0">${S.programs.length} programas · ${S.routines.length} fichas · ${S.sessions.length} treinos · ${S.custom.length} exercícios personalizados. Tudo fica salvo só neste aparelho — exporte um backup de vez em quando.</p>
+    <p class="small muted" style="margin:10px 4px 0">${S.programs.length} programas · ${S.routines.length} fichas · ${S.sessions.length} treinos · ${(S.body || []).length} registros de medidas · ${S.custom.length} exercícios personalizados. Tudo fica salvo só neste aparelho — exporte um backup de vez em quando.</p>
 
     ${standalone ? '' : `<h2 class="section">Instalar no iPhone</h2>
     <div class="card small" style="line-height:1.55">
@@ -1113,8 +1160,9 @@ function viewAjustes() {
       <span class="muted">O app abre em tela cheia, funciona offline e mantém seus dados.</span></div>`}
 
     <div style="text-align:center;margin-top:22px"><button class="link-btn" data-act="checkUpdate">Procurar atualização</button></div>
-    <p class="small muted" style="text-align:center;margin-top:6px">Ficha · versão 1.2<br>
-      Fotos e músculos dos exercícios: <a href="https://github.com/yuhonas/free-exercise-db" target="_blank" rel="noopener" style="text-decoration:underline">free-exercise-db</a> (domínio público)</p>`;
+    <p class="small muted" style="text-align:center;margin-top:6px">Ficha · versão 1.4<br>
+      Fotos e músculos dos exercícios: <a href="https://github.com/yuhonas/free-exercise-db" target="_blank" rel="noopener" style="text-decoration:underline">free-exercise-db</a> (domínio público)<br>
+      Desenho do mapa muscular: <a href="https://github.com/GV79/react-body-highlighter" target="_blank" rel="noopener" style="text-decoration:underline">react-body-highlighter</a> (MIT)</p>`;
 }
 
 function exportData() {
@@ -1144,7 +1192,7 @@ function importData(file) {
       onOk: () => {
         const b = blank();
         migrate(d);
-        S = { ...b, settings: { ...b.settings, ...(d.settings || {}) }, custom: d.custom || [], videos: d.videos || {}, programs: d.programs, routines: d.routines, sessions: d.sessions.sort((x, y) => y.start - x.start), active: d.active || null };
+        S = { ...b, settings: { ...b.settings, ...(d.settings || {}) }, custom: d.custom || [], videos: d.videos || {}, profile: d.profile || null, body: d.body || [], bodyGoal: d.bodyGoal || {}, programs: d.programs, routines: d.routines, sessions: d.sessions.sort((x, y) => y.start - x.start), active: d.active || null };
         save(); applyLook(); toast('Backup importado'); go('#/hoje');
       }
     });
@@ -1278,34 +1326,21 @@ const ACT = {
   tplFilter: el => { tplFilter = el.dataset.v; rerender(); },
   useTpl: el => {
     const t = tpls().find(x => x.id === el.dataset.id);
-    const hasDays = t.routines.some(r => r.days.length);
-    const othersActive = S.programs.filter(isActiveProg).length;
-    openSheet(`${sheetHead('Usar “' + t.name + '”')}<div class="sheet-body">
-      <p class="muted" style="margin:0 0 12px">Cria o programa com ${t.routines.length} ficha${t.routines.length > 1 ? 's' : ''}. Depois você pode trocar exercícios, séries e dias.</p>
-      <div class="list">
-        ${hasDays ? `<label class="row"><div class="grow"><div class="name">Usar os dias sugeridos</div>
-          <div class="sub wrap">${t.routines.map(r => `${esc(r.name.split(' — ')[0])}: ${r.days.length ? daysLabel(r.days) : 'livre'}`).join(' · ')}</div></div>
-          <span class="switch"><input type="checkbox" id="tplDays" checked><i></i></span></label>` : ''}
-        ${othersActive ? `<label class="row"><div class="grow"><div class="name">Pausar os outros programas</div>
-          <div class="sub wrap">A tela Hoje passa a mostrar só este programa</div></div>
-          <span class="switch"><input type="checkbox" id="tplOnly" checked><i></i></span></label>` : ''}
-      </div>
-      ${hasDays ? '<p class="small muted" style="margin:10px 4px 0">Sem dias fixos, o app sugere a próxima ficha na ordem a cada treino.</p>' : ''}
-    </div>
-    <div class="sheet-foot"><button class="btn primary block" data-act="tplCreate" data-id="${t.id}">Criar programa</button></div>`);
+    openUseProgram({ name: t.name, routines: t.routines });
   },
-  tplCreate: el => {
-    const t = tpls().find(x => x.id === el.dataset.id);
+  createPending: () => {
+    const def = pendingProgram; if (!def) return;
     const useDays = !$('#tplDays') || $('#tplDays').checked, only = $('#tplOnly') && $('#tplOnly').checked;
     if (only) S.programs.forEach(p => { p.active = false; });
-    const p = { id: uid(), name: t.name, active: true };
+    const p = { id: uid(), name: def.name, active: true };
     S.programs.push(p);
-    for (const tr of t.routines) {
+    for (const tr of def.routines) {
       S.routines.push({
         id: uid(), name: tr.name, days: useDays ? [...tr.days] : [], programId: p.id,
-        items: tr.items.filter(([exId]) => getEx(exId)).map(([exId, sets, reps, rest]) => ({ id: uid(), exId, sets, reps, rest, note: '' }))
+        items: tr.items.filter(([exId]) => getEx(exId)).map(([exId, sets, reps, rest, note]) => ({ id: uid(), exId, sets, reps, rest, note: note || '' }))
       });
     }
+    pendingProgram = null;
     save(); closeSheet(); toast('Programa criado — ajuste como quiser');
     go(`#/programa/${p.id}`);
   },
@@ -1570,9 +1605,12 @@ const ACT = {
   wipeData: () => confirmSheet({
     title: 'Apagar tudo?', text: 'Fichas, histórico e exercícios personalizados serão apagados deste aparelho. Isso não pode ser desfeito.',
     ok: 'Apagar tudo', danger: true,
-    onOk: () => { S = blank(); save(); applyLook(); toast('Dados apagados'); go('#/hoje'); }
+    onOk: () => { S = blank(); save(); applyLook(); if (typeof aiSetKey === 'function') aiSetKey(''); toast('Dados apagados'); go('#/hoje'); }
   })
 };
+
+if (typeof ASSIST_ACTIONS !== 'undefined') Object.assign(ACT, ASSIST_ACTIONS);
+if (typeof BODY_ACTIONS !== 'undefined') Object.assign(ACT, BODY_ACTIONS);
 
 function backToPicker() {
   renderPicker();
@@ -1615,6 +1653,8 @@ document.addEventListener('input', e => {
     S.active.notes = t.value; save();
   } else if (t.id === 'exq') {
     exQ = t.value; $('#exlist').innerHTML = exList();
+  } else if (t.dataset.pf) {
+    if (typeof onProfileInput === 'function') onProfileInput(t);
   } else if (t.id === 'pickq') {
     picker.q = t.value; $('#picklist').innerHTML = pickerList();
   }

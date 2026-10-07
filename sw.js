@@ -1,6 +1,6 @@
 // Service worker: deixa o app funcionando offline.
 // Ao publicar uma nova versão, aumente o número em CACHE para forçar a atualização.
-const CACHE = 'ficha-v3';
+const CACHE = 'ficha-v5';
 // Fotos dos exercícios: cache separado, que sobrevive às atualizações do app (mesmo nome em app.js).
 const IMG_CACHE = 'ficha-img-v1';
 const ASSETS = [
@@ -10,6 +10,8 @@ const ASSETS = [
   './app.js',
   './exercises.js',
   './templates.js',
+  './assistant.js',
+  './body.js',
   './manifest.webmanifest',
   './icons/icon-192.png',
   './icons/icon-512.png',
