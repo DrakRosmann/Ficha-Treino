@@ -1,10 +1,13 @@
 /* Ficha — movimento do Liquid Glass (iOS 26)
- * Molas físicas no lugar de curvas fixas. A seleção da barra de abas escorre como uma gota:
- * estica na direção do movimento, achata, passa um pouco do ponto e balança até parar; ao tocar
- * vira uma lente que segue o dedo e amplia o ícone embaixo. Os controles de vidro crescem,
- * acompanham o dedo, brilham onde são tocados e balançam ao soltar; os botões se transformam no
- * painel que abrem; segmentados e interruptores deslizam como líquido.
- * Fica desligado no estilo Clássico/Material e com "Reduzir movimento".
+ * Molas físicas, tocadas no compositor: cada movimento é calculado uma vez (a mola inteira) e
+ * entregue ao navegador como animação de transform/opacity, que roda fora do JavaScript, na taxa
+ * da tela (até 120 Hz no iPhone com ProMotion) e não trava quando a tela troca de conteúdo.
+ * - Barra de abas: a seleção escorre como gota (estica com a velocidade, passa do ponto e assenta);
+ *   ao tocar vira lente que segue o dedo, amplia o ícone embaixo e estica no elástico das pontas.
+ * - Controles de vidro crescem, seguem o dedo, brilham no ponto tocado e balançam ao soltar.
+ * - Botões viram o painel que abrem; segmentado e interruptor deslizam como líquido.
+ * - Navegação própria (sem View Transitions), para a barra de vidro continuar viva durante a troca.
+ * Desligado no Clássico/Material e com "Reduzir movimento".
  */
 'use strict';
 
@@ -12,51 +15,43 @@ const lqRoot = document.documentElement;
 const lqReduce = matchMedia('(prefers-reduced-motion: reduce)');
 const liquidOn = () => lqRoot.hasAttribute('data-glass') && !lqReduce.matches;
 function lqSync() { lqRoot.classList.toggle('lq', liquidOn()); if (!liquidOn()) lqTabsOff(); }
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+// Elástico do iOS: quanto mais passa do limite, menos anda
+const rubber = (d, dim) => (1 - 1 / (d * 0.55 / dim + 1)) * dim;
 
 /* ================= Molas ================= */
-// Massa-mola-amortecedor integrada em passos pequenos (estável a qualquer taxa de quadros)
-class Spring {
-  constructor(x, k = 400, c = 28, eps = 0.05) { this.x = x; this.t = x; this.v = 0; this.k = k; this.c = c; this.eps = eps; }
-  step(dt) {
-    const n = Math.max(1, Math.ceil(dt / 0.004)), h = dt / n;
-    for (let i = 0; i < n; i++) { const a = -this.k * (this.x - this.t) - this.c * this.v; this.v += a * h; this.x += this.v * h; }
-    if (Math.abs(this.v) < this.eps * 10 && Math.abs(this.x - this.t) < this.eps) { this.x = this.t; this.v = 0; return false; }
-    return true;
-  }
-}
-// Curva de mola como função de tempo do CSS (linear() com a resposta real, incluindo o "passar do ponto")
-function springCurve(k, c) {
-  const dt = 1 / 240, pts = [];
-  let x = 0, v = 0, t = 0;
+// [rigidez, amortecimento] (massa 1). Mais rígido = mais rápido; menos amortecido = balança mais.
+const LQ_SPRINGS = { press: [900, 52], tab: [600, 35], spring: [560, 38], bounce: [560, 25], soft: [520, 44], nav: [420, 40] };
+// Simula a mola saindo de x0 (com velocidade v0) até 0. Amostras [t (s), x, v] a cada 1/240 s.
+function springSim(x0, v0, k, c) {
+  const dt = 1 / 240, out = [], eps = Math.max(0.0008, Math.abs(x0) * 0.0012);
+  let x = x0, v = v0, t = 0;
   for (;;) {
-    pts.push([t, x]);
-    const a = -k * (x - 1) - c * v; v += a * dt; x += v * dt; t += dt;
-    if ((t > 0.05 && Math.abs(x - 1) < 0.0015 && Math.abs(v) < 0.02) || t > 2.5) break;
-  }
-  const every = Math.max(1, Math.floor(pts.length / 64)), out = [];
-  for (let i = 0; i < pts.length; i += every) out.push(`${pts[i][1].toFixed(4)} ${(pts[i][0] / t * 100).toFixed(2)}%`);
-  out.push('1 100%');
-  return { easing: `linear(${out.join(', ')})`, duration: Math.round(t * 1000) };
-}
-// Quadros-chave de uma mola que sai de x0 e volta a 0; map(x, velocidade) devolve as propriedades de cada quadro
-function springFrames(x0, k, c, map) {
-  const dt = 1 / 120, fr = [];
-  let x = x0, v = 0, t = 0;
-  for (;;) {
-    fr.push([t, x, v]);
+    out.push([t, x, v]);
     const a = -k * x - c * v; v += a * dt; x += v * dt; t += dt;
-    if ((Math.abs(x) < 0.25 && Math.abs(v) < 6) || t > 1.6) break;
+    if ((t > 0.03 && Math.abs(x) < eps && Math.abs(v) < eps * 25) || t > 2) break;
   }
-  fr.push([t, 0, 0]);
-  return { frames: fr.filter((f, i) => i % 2 === 0 || i === fr.length - 1).map(([tt, xx, vv]) => ({ offset: tt / t, ...map(xx, vv) })), duration: Math.round(t * 1000) };
+  out.push([t, 0, 0]);
+  return out;
+}
+// A mola como curva do CSS/WAAPI: linear() com a resposta real (inclui o "passar do ponto")
+function springCurve(k, c) {
+  const tr = springSim(1, 0, k, c), T = tr[tr.length - 1][0], every = Math.max(1, Math.floor(tr.length / 60)), pts = [];
+  for (let i = 0; i < tr.length - 1; i += every) pts.push(`${(1 - tr[i][1]).toFixed(4)} ${(tr[i][0] / T * 100).toFixed(2)}%`);
+  pts.push('1 100%');
+  return { easing: `linear(${pts.join(', ')})`, duration: Math.round(T * 1000) };
+}
+// Quadros-chave de uma simulação (no máximo ~90), com propriedades por quadro
+function simFrames(tr, map) {
+  const T = tr[tr.length - 1][0], step = Math.max(1, Math.round(tr.length / 90));
+  return { frames: tr.filter((_, i) => i % step === 0 || i === tr.length - 1).map(([t, x, v]) => ({ offset: t / T, ...map(x, v) })), duration: Math.round(T * 1000) };
 }
 const LQ_EASE = {};
 (() => {
   const ok = window.CSS && CSS.supports && CSS.supports('transition-timing-function', 'linear(0, 1)');
   const vars = [];
-  // [nome, rigidez, amortecimento]: bounce balança bem, spring passa um pouco do ponto, soft quase não passa
-  for (const [name, k, c, fb] of [['bounce', 360, 19, 'cubic-bezier(.3,1.5,.5,1)'], ['spring', 400, 29, 'cubic-bezier(.3,1.25,.4,1)'], ['soft', 300, 33, 'cubic-bezier(.25,1,.35,1)']]) {
-    LQ_EASE[name] = ok ? springCurve(k, c) : { easing: fb, duration: 520 };
+  for (const [name, [k, c]] of Object.entries(LQ_SPRINGS)) {
+    LQ_EASE[name] = ok ? springCurve(k, c) : { easing: 'cubic-bezier(.3,1.25,.4,1)', duration: 420 };
     vars.push(`--lq-${name}: ${LQ_EASE[name].easing}; --lq-${name}-d: ${LQ_EASE[name].duration}ms;`);
   }
   // Numa folha própria: o applyLook reescreve as variáveis do estilo inline do <html>
@@ -66,26 +61,43 @@ const LQ_EASE = {};
   document.head.appendChild(st);
 })();
 
-// Um único laço de animação para todas as molas ativas
-const lqAnims = new Set();
-let lqRaf = 0, lqLast = 0;
-function lqKick(f) { lqAnims.add(f); if (!lqRaf) { lqLast = performance.now(); lqRaf = requestAnimationFrame(lqLoop); } }
-function lqLoop(now) {
-  const dt = Math.min(0.034, Math.max(0.001, (now - lqLast) / 1000));
-  lqLast = now;
-  for (const f of [...lqAnims]) if (!f(dt)) lqAnims.delete(f);
-  lqRaf = lqAnims.size ? requestAnimationFrame(lqLoop) : 0;
-}
-const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-// Elástico do iOS: quanto mais passa do limite, menos anda
-const rubber = (d, dim) => (1 - 1 / (d * 0.55 / dim + 1)) * dim;
-
 /* ================= Barra de abas: gota de vidro ================= */
-const TAB = { x: null, p: new Spring(0, 520, 30, 0.001), drag: null, idx: 0, w: 0 };
+const TAB = { idx: 0, w: 0, x: 0, to: 0, anim: null, traj: null, t0: 0, ready: false, drag: null, dragX: 0, raf: 0 };
 const tabBar = () => document.getElementById('tabs');
+const pillEl = () => { const b = tabBar(); return b && b.querySelector('.tab-pill'); };
 function tabGeom() {
   const bar = tabBar(), n = bar.querySelectorAll('a').length || 1;
   return { bar, n, w: (bar.clientWidth - 8) / n };
+}
+// Posição + estique pela velocidade (e pelo elástico das pontas)
+function pillTransform(x, v = 0, over = 0) {
+  const st = Math.min(0.5, Math.abs(v) / 1700);
+  return `translateX(${x.toFixed(2)}px) scale(${(1 + st + over * 0.7).toFixed(4)}, ${(1 - st * 0.28 - over * 0.2).toFixed(4)})`;
+}
+// Onde a gota está agora (também no meio de uma animação) e a que velocidade
+function pillState() {
+  if (TAB.anim && TAB.traj) {
+    const tr = TAB.traj, i = Math.floor((performance.now() - TAB.t0) / 1000 * 240);
+    if (i < tr.length - 1) return { x: TAB.to + tr[Math.max(0, i)][1], v: tr[Math.max(0, i)][2] };
+  }
+  return { x: TAB.x, v: 0 };
+}
+function pillStop() { if (TAB.anim) { TAB.anim.cancel(); TAB.anim = null; } }
+function pillSet(x) { const p = pillEl(); pillStop(); TAB.x = TAB.to = x; if (p) p.style.transform = pillTransform(x); }
+// Leva a gota até "to" com a mola, partindo de onde ela está (com a velocidade que tiver)
+function pillGo(to, v0) {
+  const pill = pillEl();
+  if (!pill) return;
+  const cur = pillState(), v = v0 != null ? v0 : cur.v;
+  pillStop();
+  TAB.x = TAB.to = to;
+  pill.style.transform = pillTransform(to);
+  if (Math.abs(cur.x - to) < 0.5 && Math.abs(v) < 5) return;
+  const [k, c] = LQ_SPRINGS.tab, tr = springSim(cur.x - to, v, k, c);
+  const { frames, duration } = simFrames(tr, (x, vv) => ({ transform: pillTransform(to + x, vv) }));
+  TAB.traj = tr; TAB.t0 = performance.now();
+  const a = TAB.anim = pill.animate(frames, { duration, easing: 'linear' });
+  a.onfinish = () => { if (TAB.anim === a) TAB.anim = null; };
 }
 // Chamado a cada render com o índice da aba atual
 function liquidTabs(ti) {
@@ -93,169 +105,155 @@ function liquidTabs(ti) {
   if (!bar) return;
   if (!liquidOn()) { lqTabsOff(); return; }
   bar.classList.add('liquid');
-  const g = tabGeom();
-  TAB.idx = Math.max(0, ti); TAB.w = g.w;
-  if (!TAB.x || bar.classList.contains('mini') || bar.classList.contains('no-tab')) {
-    TAB.x = TAB.x || new Spring(0, 380, 25, 0.05);
-    TAB.x.x = TAB.x.t = TAB.idx * g.w; TAB.x.v = 0;
-  } else TAB.x.t = TAB.idx * g.w;
-  lqKick(tabFrame);
+  const g = tabGeom(), idx = Math.max(0, ti), to = idx * g.w;
+  TAB.idx = idx; TAB.w = g.w;
+  if (TAB.drag) return;
+  if (!TAB.ready || bar.classList.contains('mini') || bar.classList.contains('no-tab')) { TAB.ready = true; pillSet(to); return; }
+  if (Math.abs(TAB.to - to) < 0.5 && (TAB.anim || Math.abs(TAB.x - to) < 0.5)) return;
+  pillGo(to);
 }
 function lqTabsOff() {
   const bar = tabBar();
   if (!bar || !bar.classList.contains('liquid')) return;
-  bar.classList.remove('liquid', 'press');
-  const pill = bar.querySelector('.tab-pill');
-  if (pill) { pill.style.translate = ''; pill.style.scale = ''; }
+  pillStop(); TAB.ready = false; TAB.drag = null;
+  bar.classList.remove('liquid', 'press', 'dragging');
+  const pill = pillEl();
+  if (pill) pill.style.transform = '';
   bar.querySelectorAll('a').forEach(a => { a.classList.remove('near'); const s = a.querySelector('svg'); if (s) s.style.scale = ''; });
 }
-function tabFrame(dt) {
-  if (!TAB.x) return false;
-  const g = tabGeom();
-  if (!g.bar.classList.contains('liquid')) return false;
-  if (Math.abs(g.w - TAB.w) > 0.5 && TAB.drag == null) { TAB.w = g.w; TAB.x.x = TAB.x.t = TAB.idx * g.w; TAB.x.v = 0; }
-  if (TAB.drag != null) {
-    const max = (g.n - 1) * g.w, left = g.bar.getBoundingClientRect().left;
-    let t = TAB.drag - left - 4 - g.w / 2;
-    if (t < 0) t = -rubber(-t, g.w * 0.8); else if (t > max) t = max + rubber(t - max, g.w * 0.8);
-    TAB.x.t = t;
-  }
-  const a = TAB.x.step(dt), b = TAB.p.step(dt);
-  paintTabs(g);
-  return a || b || TAB.drag != null;
-}
-function paintTabs(g) {
-  const pill = g.bar.querySelector('.tab-pill');
-  if (!pill) return;
-  const x = TAB.x.x, v = TAB.x.v, p = TAB.p.x, max = (g.n - 1) * g.w;
-  const st = Math.min(0.5, Math.abs(v) / 1700);                       // estica com a velocidade
-  const over = (x < 0 ? -x : x > max ? x - max : 0) / g.w;            // e no elástico das pontas
-  const sx = (1 + st + over * 0.7) * (1 + 0.18 * p), sy = (1 - st * 0.28 - over * 0.2) * (1 + 0.12 * p);
-  pill.style.translate = `${x.toFixed(2)}px 0`;
-  pill.style.scale = `${sx.toFixed(4)} ${sy.toFixed(4)}`;
-  // A lente amplia o ícone que está embaixo dela
+// A lente amplia o ícone que está embaixo dela
+function lensIcons(g, x) {
   const pc = x + g.w / 2;
   let near = -1, best = 9;
-  g.bar.querySelectorAll('a').forEach((a, i) => {
+  const links = g.bar.querySelectorAll('a');
+  links.forEach((a, i) => {
     const d = Math.abs(i * g.w + g.w / 2 - pc) / g.w, s = a.querySelector('svg');
     if (d < best) { best = d; near = i; }
-    const m = 1 + 0.24 * p * Math.max(0, 1 - d);
-    if (s) s.style.scale = m > 1.001 ? m.toFixed(3) : '';
+    if (s) s.style.scale = d < 1 ? (1 + 0.24 * (1 - d)).toFixed(3) : '';
   });
-  g.bar.querySelectorAll('a').forEach((a, i) => a.classList.toggle('near', p > 0.08 && i === near));
+  links.forEach((a, i) => a.classList.toggle('near', i === near));
 }
-// Dedo na barra: vira lente; arrastando, a lente segue o dedo; ao soltar, escorre até a aba
+// Dedo na barra (chamado pelo app.js): ao tocar vira lente (CSS), arrastando segue o dedo
 function liquidTabPress(on, idx) {
-  if (!TAB.x || !liquidOn()) return;
-  TAB.p.t = on ? 1 : 0;
-  if (!on) { TAB.drag = null; if (idx != null) TAB.x.t = idx * TAB.w; }
-  lqKick(tabFrame);
+  const bar = tabBar();
+  if (!bar || !bar.classList.contains('liquid') || on) return;
+  if (TAB.raf) { cancelAnimationFrame(TAB.raf); TAB.raf = 0; }
+  bar.classList.remove('dragging');
+  bar.querySelectorAll('a').forEach(a => { a.classList.remove('near'); const s = a.querySelector('svg'); if (s) s.style.scale = ''; });
+  if (!TAB.drag) return;
+  const v = TAB.drag.v;
+  TAB.drag = null;
+  pillGo((idx != null ? idx : TAB.idx) * TAB.w, clamp(v, -4000, 4000)); // solta com a velocidade do dedo
 }
-function liquidTabDrag(clientX) { if (!TAB.x || !liquidOn()) return; TAB.drag = clientX; lqKick(tabFrame); }
+function liquidTabDrag(clientX) {
+  const bar = tabBar();
+  if (!bar || !bar.classList.contains('liquid')) return;
+  TAB.dragX = clientX;
+  if (TAB.raf) return;
+  TAB.raf = requestAnimationFrame(() => {
+    TAB.raf = 0;
+    const g = tabGeom(), max = (g.n - 1) * g.w, left = g.bar.getBoundingClientRect().left;
+    let x = TAB.dragX - left - 4 - g.w / 2, over = 0;
+    if (x < 0) { x = -rubber(-x, g.w * 0.8); over = -x / g.w; } else if (x > max) { x = max + rubber(x - max, g.w * 0.8); over = (x - max) / g.w; }
+    const now = performance.now();
+    if (!TAB.drag) { TAB.drag = { x: pillState().x, t: now - 16, v: 0 }; pillStop(); g.bar.classList.add('dragging'); }
+    const inst = (x - TAB.drag.x) / (Math.max(8, now - TAB.drag.t) / 1000);
+    TAB.drag.v = TAB.drag.v * 0.55 + inst * 0.45; TAB.drag.x = x; TAB.drag.t = now;
+    TAB.x = TAB.to = x;
+    g.bar.querySelector('.tab-pill').style.transform = pillTransform(x, TAB.drag.v, over);
+    lensIcons(g, x);
+  });
+}
 
 /* ================= Toque nos controles de vidro ================= */
-// Crescem, seguem o dedo um pouco, brilham no ponto tocado e balançam ao soltar
+// Crescem (transição de mola no compositor), seguem o dedo, brilham no ponto tocado e balançam ao soltar
 const LQ_PRESS = '.btn, .chip, .seg button, .icon-btn, .link-btn, .tpl-banner, .ach-cell, .look-row button, .swatches button';
 const LQ_MORPH = '.btn, .icon-btn, .link-btn, .chip, .ss-link';
-const LQ = { last: null, held: null, src: null, in: null, out: null };
-const lqJ = new WeakMap();
+const LQ = { last: null, held: null, src: null, in: null, out: null, nav: null };
 function glint(el, e) {
   let g = el.querySelector(':scope > .lq-glint');
   if (!g) {
-    g = document.createElement('span'); g.className = 'lq-glint'; g.setAttribute('aria-hidden', 'true');
+    g = document.createElement('span'); g.className = 'lq-glint'; g.setAttribute('aria-hidden', 'true'); g.innerHTML = '<i></i>';
     if (getComputedStyle(el).position === 'static') el.style.position = 'relative';
     el.appendChild(g);
   }
   const r = el.getBoundingClientRect();
-  g.style.setProperty('--gx', (e.clientX - r.left).toFixed(1) + 'px');
-  g.style.setProperty('--gy', (e.clientY - r.top).toFixed(1) + 'px');
-  g.style.setProperty('--gr', Math.round(clamp(Math.min(r.width, r.height) * 1.7, 44, 120)) + 'px');
+  g._r = Math.round(clamp(Math.min(r.width, r.height) * 1.7, 44, 120));
+  g.firstChild.style.width = g.firstChild.style.height = 2 * g._r + 'px';
+  glintMove(g, e.clientX - r.left, e.clientY - r.top);
   clearTimeout(g._t);
   g.classList.remove('out'); g.classList.add('on');
   return g;
 }
-function glintOff(g) {
-  if (!g) return;
-  g.classList.add('out');
-  g._t = setTimeout(() => g.remove(), 650);
-}
-function jelly(el) {
-  let j = lqJ.get(el);
-  if (!j) {
-    j = { el, s: new Spring(1, 620, 20, 0.0006), x: new Spring(0, 520, 30, 0.04), y: new Spring(0, 520, 30, 0.04) };
-    j.f = dt => {
-      if (!j.el.isConnected) return false;
-      const a = j.s.step(dt), b = j.x.step(dt), c = j.y.step(dt);
-      const kx = 1 + Math.abs(j.x.x) / Math.max(40, j.w) * 0.6, ky = 1 + Math.abs(j.y.x) / Math.max(30, j.h) * 0.6;
-      j.el.style.scale = `${(j.s.x * kx / Math.sqrt(ky)).toFixed(4)} ${(j.s.x * ky / Math.sqrt(kx)).toFixed(4)}`;
-      if (j.move) j.el.style.translate = `${j.x.x.toFixed(2)}px ${j.y.x.toFixed(2)}px`;
-      const busy = a || b || c || LQ.held === j;
-      if (!busy) { j.el.style.scale = ''; if (j.move) j.el.style.translate = ''; }
-      return busy;
-    };
-    lqJ.set(el, j);
-  }
-  return j;
-}
+function glintMove(g, x, y) { g.firstChild.style.transform = `translate(${(x - g._r).toFixed(1)}px, ${(y - g._r).toFixed(1)}px)`; }
+function glintOff(g) { if (!g) return; g.classList.add('out'); g._t = setTimeout(() => g.remove(), 650); }
 document.addEventListener('pointerdown', e => {
   LQ.last = { el: e.target.closest('button, a, label, [data-act]'), t: performance.now() };
   if (!liquidOn() || e.button > 0) return;
   const bar = e.target.closest('#tabs');
-  if (bar) { LQ.held = { g: glint(bar, e), el: bar, ox: e.clientX, oy: e.clientY }; return; }
+  if (bar) { LQ.held = { el: bar, g: glint(bar, e), bar: true }; return; }
   const el = e.target.closest(LQ_PRESS);
   if (!el || el.disabled || el.closest('.sets, .heat')) return;
-  const r = el.getBoundingClientRect(), j = jelly(el);
-  j.w = r.width; j.h = r.height; j.ox = e.clientX; j.oy = e.clientY;
-  j.move = getComputedStyle(el).translate === 'none'; // não mexe em quem já usa translate
-  j.s.t = r.width > 220 ? 1.025 : r.width < 64 ? 1.16 : 1.08;
-  j.g = glint(el, e);
-  LQ.held = j;
-  lqKick(j.f);
+  const r = el.getBoundingClientRect();
+  el.style.setProperty('--lq-s', r.width > 220 ? 1.025 : r.width < 64 ? 1.15 : 1.07);
+  clearTimeout(el._lqT);
+  el.classList.remove('lq-up'); el.classList.add('lq-down');
+  LQ.held = { el, g: glint(el, e), ox: e.clientX, oy: e.clientY, move: getComputedStyle(el).translate === 'none' };
 }, true);
 window.addEventListener('pointermove', e => {
-  const j = LQ.held;
-  if (!j) return;
-  const r = j.el.getBoundingClientRect();
-  if (j.g) { j.g.style.setProperty('--gx', (e.clientX - r.left).toFixed(1) + 'px'); j.g.style.setProperty('--gy', (e.clientY - r.top).toFixed(1) + 'px'); }
-  if (j.s) { j.x.t = clamp((e.clientX - j.ox) * 0.12, -7, 7); j.y.t = clamp((e.clientY - j.oy) * 0.12, -6, 6); lqKick(j.f); }
+  const h = LQ.held;
+  if (!h) return;
+  const r = h.el.getBoundingClientRect();
+  glintMove(h.g, e.clientX - r.left, e.clientY - r.top);
+  if (!h.bar && h.move) h.el.style.translate = `${clamp((e.clientX - h.ox) * 0.12, -7, 7).toFixed(1)}px ${clamp((e.clientY - h.oy) * 0.12, -6, 6).toFixed(1)}px`;
 }, { passive: true });
 function lqRelease() {
-  const j = LQ.held;
-  if (!j) return;
+  const h = LQ.held;
+  if (!h) return;
   LQ.held = null;
-  glintOff(j.g);
-  if (j.s) { j.s.t = 1; j.x.t = 0; j.y.t = 0; lqKick(j.f); }
+  glintOff(h.g);
+  if (h.bar) return;
+  const el = h.el;
+  el.classList.remove('lq-down'); el.classList.add('lq-up'); // volta com a mola que balança
+  if (h.move) el.style.translate = '';
+  el._lqT = setTimeout(() => { el.classList.remove('lq-up'); el.style.removeProperty('--lq-s'); }, LQ_EASE.bounce.duration + 60);
 }
 window.addEventListener('pointerup', lqRelease);
 window.addEventListener('pointercancel', lqRelease);
 
 /* ================= Botão que vira painel ================= */
-// O painel nasce do botão tocado (cresce da forma e do lugar dele) e volta para ele ao fechar
+// O painel cresce do botão tocado até o lugar dele e volta para o botão ao fechar (só transform e opacity)
+function morphFrom(src, s) {
+  const r = src.getBoundingClientRect();
+  if (!r.width || r.bottom < 0 || r.top > innerHeight) return null;
+  const k = clamp(r.width / s.width, 0.12, 1);
+  return `translate(${(r.left - s.left).toFixed(1)}px, ${(r.top + r.height / 2 - s.top - s.height * k / 2).toFixed(1)}px) scale(${k.toFixed(4)})`;
+}
+function fadeKids(sh, show) {
+  [...sh.children].forEach(c => {
+    if (c.classList.contains('grab')) return;
+    c.animate(show ? [{ opacity: 0 }, { opacity: 1 }] : [{ opacity: 1 }, { opacity: 0 }], show ? { duration: 220, delay: 60, easing: 'ease-out', fill: 'backwards' } : { duration: 120, easing: 'ease-in', fill: 'forwards' });
+  });
+}
 function liquidSheetIn(sh, bd, swap) {
   if (LQ.out) { LQ.out.cancel(); LQ.out = null; }
   if (LQ.in && !swap) { LQ.in.cancel(); LQ.in = null; }
-  sh.classList.remove('morph');
   if (swap) return;
+  sh.classList.remove('morph');
   if (LQ.src) { LQ.src.classList.remove('morph-src'); LQ.src = null; }
   if (!liquidOn() || !sh.animate) return;
   const lp = LQ.last;
   if (!lp || !lp.el || performance.now() - lp.t > 900 || !lp.el.isConnected) return;
   const src = lp.el.closest(LQ_MORPH);
   if (!src || src.closest('#sheet, #tabs')) return;
-  const r = src.getBoundingClientRect();
-  if (!r.width || r.bottom < 0 || r.top > innerHeight) return;
   sh.classList.add('morph');
-  const s = sh.getBoundingClientRect();
-  const rad = Math.min(r.height / 2, parseFloat(getComputedStyle(src).borderTopLeftRadius) || r.height / 2);
-  const E = LQ_EASE.spring;
-  const a = LQ.in = sh.animate([
-    { translate: `${(r.left - s.left).toFixed(1)}px ${(r.top - s.top).toFixed(1)}px`, clipPath: `inset(0px ${(s.width - r.width).toFixed(1)}px ${(s.height - r.height).toFixed(1)}px 0px round ${rad}px)` },
-    { translate: '0px 0px', clipPath: 'inset(0px 0px 0px 0px round 38px)' }
-  ], { duration: E.duration, easing: E.easing });
-  a.finished.then(() => { if (LQ.in === a) { LQ.in = null; sh.classList.remove('morph'); } }, () => { });
-  [...sh.children].forEach(c => { if (!c.classList.contains('grab')) c.animate([{ opacity: 0, filter: 'blur(5px)' }, { opacity: 1, filter: 'blur(0px)' }], { duration: 300, delay: 70, easing: 'ease-out', fill: 'backwards' }); });
+  const from = morphFrom(src, sh.getBoundingClientRect());
+  if (!from) { sh.classList.remove('morph'); return; }
+  const E = LQ_EASE.spring, a = LQ.in = sh.animate([{ transform: from }, { transform: 'none' }], { duration: E.duration, easing: E.easing });
+  fadeKids(sh, true);
   src.classList.add('morph-src');
   LQ.src = src;
+  a.finished.then(() => { if (LQ.in === a) { LQ.in = null; sh.classList.remove('morph'); } }, () => { });
 }
 // Devolve true quando cuida do fechamento (done é chamado no fim)
 function liquidSheetOut(sh, bd, done) {
@@ -263,22 +261,38 @@ function liquidSheetOut(sh, bd, done) {
   const src = LQ.src;
   LQ.src = null;
   const restore = () => { if (src) src.classList.remove('morph-src'); sh.classList.remove('morph'); };
-  if (!src || !liquidOn() || !src.isConnected || sh.style.transform || !sh.animate) { restore(); return false; }
-  const r = src.getBoundingClientRect(), s = sh.getBoundingClientRect();
-  if (!r.width || r.bottom < 0 || r.top > innerHeight) { restore(); return false; }
-  const rad = Math.min(r.height / 2, parseFloat(getComputedStyle(src).borderTopLeftRadius) || r.height / 2);
+  const to = src && liquidOn() && src.isConnected && !sh.style.transform && sh.animate ? morphFrom(src, sh.getBoundingClientRect()) : null;
+  if (!to) { restore(); return false; }
   sh.classList.add('morph');
-  [...sh.children].forEach(c => { if (!c.classList.contains('grab')) c.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 140, easing: 'ease-in', fill: 'forwards' }); });
-  const a = sh.animate([
-    { translate: '0px 0px', clipPath: `inset(0px 0px 0px 0px round 38px)` },
-    { translate: `${(r.left - s.left).toFixed(1)}px ${(r.top - s.top).toFixed(1)}px`, clipPath: `inset(0px ${(s.width - r.width).toFixed(1)}px ${(s.height - r.height).toFixed(1)}px 0px round ${rad}px)` }
-  ], { duration: Math.min(460, LQ_EASE.soft.duration), easing: LQ_EASE.soft.easing, fill: 'forwards' });
-  LQ.out = a;
-  a.finished.then(() => {
-    if (LQ.out !== a) return;
-    LQ.out = null; done(); restore();
-    a.cancel();
-  }).catch(() => restore());
+  fadeKids(sh, false);
+  const E = LQ_EASE.soft, a = LQ.out = sh.animate([{ transform: 'none' }, { transform: to }], { duration: Math.min(420, E.duration), easing: E.easing, fill: 'forwards' });
+  a.finished.then(() => { if (LQ.out !== a) return; LQ.out = null; done(); restore(); a.cancel(); }, () => restore());
+  return true;
+}
+
+/* ================= Navegação entre telas ================= */
+// A tela nova entra deslizando por cima da antiga (e sai ao voltar), como no iOS. Sem View Transitions,
+// a barra de vidro continua viva (com o desfoque e a gota animando) durante a troca.
+function liquidNav(dir, update) {
+  if (!liquidOn() || !document.body.animate) return false;
+  const view = document.getElementById('view');
+  if (LQ.nav) LQ.nav();
+  if (dir === 'tab') { update(); return true; } // trocar de aba é instantâneo, como no iPhone
+  const r = view.getBoundingClientRect(), cs = getComputedStyle(view), W = innerWidth;
+  const ghost = document.createElement('div');
+  ghost.className = 'lq-ghost';
+  ghost.setAttribute('aria-hidden', 'true');
+  ghost.style.cssText = `left:${r.left}px;top:${r.top}px;width:${r.width}px;padding:${cs.paddingTop} ${cs.paddingRight} ${cs.paddingBottom} ${cs.paddingLeft}`;
+  ghost.append(...view.childNodes);
+  document.body.appendChild(ghost);
+  update();
+  const back = dir === 'back', E = LQ_EASE.nav, opt = { duration: E.duration, easing: E.easing };
+  ghost.classList.toggle('over', back);
+  view.classList.add('lq-nav', back ? 'under' : 'over');
+  const a1 = ghost.animate(back ? [{ transform: 'none' }, { transform: `translateX(${W}px)` }] : [{ transform: 'none', opacity: 1 }, { transform: `translateX(${-W * 0.28}px)`, opacity: 0.55 }], opt);
+  const a2 = view.animate(back ? [{ transform: `translateX(${-W * 0.28}px)`, opacity: 0.55 }, { transform: 'none', opacity: 1 }] : [{ transform: `translateX(${W}px)` }, { transform: 'none' }], opt);
+  const end = LQ.nav = () => { if (LQ.nav !== end) return; LQ.nav = null; a1.cancel(); a2.cancel(); ghost.remove(); view.classList.remove('lq-nav', 'under', 'over'); };
+  a2.finished.then(end, end);
   return true;
 }
 
@@ -302,7 +316,8 @@ document.addEventListener('click', e => {
     pill.style.cssText = `left:${(to.left - sr.left).toFixed(1)}px;top:${(to.top - sr.top).toFixed(1)}px;width:${to.width.toFixed(1)}px;height:${to.height.toFixed(1)}px`;
     seg.appendChild(pill);
     on.classList.add('lq-hold');
-    const { frames, duration } = springFrames(dx, 420, 26, (x, v) => ({ translate: `${x.toFixed(2)}px 0`, scale: `${(1 + Math.min(0.4, Math.abs(v) / 1900)).toFixed(4)} ${(1 - Math.min(0.14, Math.abs(v) / 6000)).toFixed(4)}` }));
+    const [k, c] = LQ_SPRINGS.tab;
+    const { frames, duration } = simFrames(springSim(dx, 0, k, c), (x, v) => ({ transform: `translateX(${x.toFixed(2)}px) scale(${(1 + Math.min(0.4, Math.abs(v) / 1900)).toFixed(4)}, ${(1 - Math.min(0.14, Math.abs(v) / 6000)).toFixed(4)})` }));
     const a = pill.animate(frames, { duration, easing: 'linear' });
     const end = () => { pill.remove(); on.classList.remove('lq-hold'); };
     a.finished.then(end, end);
@@ -326,12 +341,18 @@ document.addEventListener('change', e => {
       i.classList.add(cls); void i.offsetWidth; i.classList.remove(cls);
     }
     i.classList.remove('lq-drop'); void i.offsetWidth; i.classList.add('lq-drop');
-    clearTimeout(i._t); i._t = setTimeout(() => i.classList.remove('lq-drop'), 900);
+    clearTimeout(i._t); i._t = setTimeout(() => i.classList.remove('lq-drop'), 700);
   });
 }, true);
 
 /* ================= Liga e desliga ================= */
 new MutationObserver(lqSync).observe(lqRoot, { attributes: true, attributeFilter: ['data-glass'] });
 lqReduce.addEventListener && lqReduce.addEventListener('change', lqSync);
-if (window.ResizeObserver && tabBar()) new ResizeObserver(() => { if (TAB.x) lqKick(tabFrame); }).observe(tabBar());
+// Barra muda de largura (minimizar, girar a tela): reposiciona a gota sem animar
+if (window.ResizeObserver && tabBar()) new ResizeObserver(() => {
+  const bar = tabBar();
+  if (!bar.classList.contains('liquid') || TAB.drag || TAB.anim) return;
+  const g = tabGeom();
+  if (Math.abs(g.w - TAB.w) > 0.5) { TAB.w = g.w; pillSet(TAB.idx * g.w); }
+}).observe(tabBar());
 lqSync();
