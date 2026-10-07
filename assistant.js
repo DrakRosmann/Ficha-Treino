@@ -462,17 +462,21 @@ async function aiGenerate(p, onProgress, holder) {
     if (!res.opts.length) throw new AiError('A IA não montou nenhuma opção válida. Tente de novo.');
     return res;
   } catch (e) {
-    if (e instanceof AiError) throw e;
-    if (e instanceof Anthropic.APIUserAbortError) throw e;
-    if (e instanceof Anthropic.AuthenticationError) throw new AiError('Chave da API inválida. Confira a chave em Ajustes → Inteligência artificial.');
-    if (e instanceof Anthropic.PermissionDeniedError) throw new AiError('Esta chave não tem permissão para usar o modelo. Confira sua conta na Anthropic.');
-    if (e instanceof Anthropic.RateLimitError) throw new AiError('Limite de uso atingido. Espere um pouco e tente de novo.');
-    if (e instanceof Anthropic.BadRequestError) throw new AiError('A Anthropic recusou a solicitação: ' + (e.error?.error?.message || e.message));
-    if (e instanceof Anthropic.InternalServerError) throw new AiError('O serviço da IA está ocupado agora. Tente de novo em instantes.');
-    if (e instanceof Anthropic.APIConnectionError) throw new AiError('Sem conexão com a internet (a IA precisa de internet).');
-    if (e instanceof Anthropic.APIError) throw new AiError(`Erro da IA (${e.status || '?'}): ${e.message}`);
-    throw e;
+    throw aiFriendly(e, Anthropic);
   }
+}
+// Erros da API em mensagens para o usuário (usado também pela IA da Dieta)
+function aiFriendly(e, Anthropic) {
+  if (e instanceof AiError) return e;
+  if (e instanceof Anthropic.APIUserAbortError) return e;
+  if (e instanceof Anthropic.AuthenticationError) return new AiError('Chave da API inválida. Confira a chave em Ajustes → Inteligência artificial.');
+  if (e instanceof Anthropic.PermissionDeniedError) return new AiError('Esta chave não tem permissão para usar o modelo. Confira sua conta na Anthropic.');
+  if (e instanceof Anthropic.RateLimitError) return new AiError('Limite de uso atingido. Espere um pouco e tente de novo.');
+  if (e instanceof Anthropic.BadRequestError) return new AiError('A Anthropic recusou a solicitação: ' + (e.error?.error?.message || e.message));
+  if (e instanceof Anthropic.InternalServerError) return new AiError('O serviço da IA está ocupado agora. Tente de novo em instantes.');
+  if (e instanceof Anthropic.APIConnectionError) return new AiError('Sem conexão com a internet (a IA precisa de internet).');
+  if (e instanceof Anthropic.APIError) return new AiError(`Erro da IA (${e.status || '?'}): ${e.message}`);
+  return e;
 }
 
 /* ---------- Telas ---------- */

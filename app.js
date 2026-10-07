@@ -59,7 +59,7 @@ function daysLabel(days) {
 const I = {
   back: '<svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>',
   plus: '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
-  check: '<svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+  check: '<svg viewBox="0 0 24 24"><path pathLength="1" d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
   chev: '<svg class="chev" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg>',
   up: '<svg viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></svg>',
   down: '<svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>',
@@ -70,6 +70,9 @@ const I = {
   x: '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>',
   copy: '<svg viewBox="0 0 24 24"><rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M15.5 8.5V6a1.5 1.5 0 0 0-1.5-1.5H6A1.5 1.5 0 0 0 4.5 6v8A1.5 1.5 0 0 0 6 15.5h2.5"/></svg>',
   edit: '<svg viewBox="0 0 24 24"><path d="M4.5 19.5h4l10-10-4-4-10 10z"/><path d="M13 7l4 4"/></svg>',
+  camera: '<svg viewBox="0 0 24 24"><path d="M4 8.5a2 2 0 0 1 2-2h2l1.5-2h5L16 6.5h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.5"/></svg>',
+  barcode: '<svg viewBox="0 0 24 24"><path d="M4 6v12M7 6v12M10.5 6v12M13 6v12M16.5 6v12M20 6v12"/></svg>',
+  food: '<svg viewBox="0 0 24 24"><path d="M7 3v18M4.5 3v5a2.5 2.5 0 0 0 5 0V3M17 21V3c-2 1.2-3.5 3.6-3.5 6.5V13H17"/></svg>',
   dumbbell: '<svg viewBox="0 0 24 24"><path d="M2.5 12h2M19.5 12h2M8 12h8"/><rect x="4.5" y="7.5" width="3.5" height="9" rx="1"/><rect x="16" y="7.5" width="3.5" height="9" rx="1"/></svg>',
   list: '<svg viewBox="0 0 24 24"><rect x="5" y="3.5" width="14" height="17" rx="2"/><path d="M8.5 9h7M8.5 13h7M8.5 17h4"/></svg>',
   chart: '<svg viewBox="0 0 24 24"><path d="M3.5 19.5h17"/><path d="M6 16l4-5 3.5 3 5-7"/></svg>',
@@ -86,8 +89,10 @@ const I = {
 /* ================= Estado ================= */
 function blank() {
   return {
-    v: 1, settings: { rest: 90, sound: true, theme: 'auto', accent: 'limao', style: 'glass', keepAwake: true, iosTimer: false, timerShortcut: 'Descanso Ficha' },
-    custom: [], programs: [], routines: [], sessions: [], active: null, videos: {}, profile: null, body: [], bodyGoal: {}
+    v: 1, settings: { rest: 90, sound: true, theme: 'auto', accent: 'limao', style: 'auto', styleAuto: true, keepAwake: true, iosTimer: false, timerShortcut: 'Descanso Ficha',
+      progression: true, rir: true, bar: 20, lastBackup: 0, backupSnooze: 0 },
+    custom: [], programs: [], routines: [], sessions: [], active: null, videos: {}, profile: null, body: [], bodyGoal: {},
+    food: { days: {}, custom: [], fav: [], recent: [], goal: null, tdee: null }
   };
 }
 // Dados antigos (sem programas): as fichas existentes viram o programa "Meu treino"
@@ -102,9 +107,9 @@ function migrate(d) {
   }
   if (d.settings) {
     delete d.settings.lockTimer; // opção antiga (descanso por áudio), removida
-    // "Efeito vidro" (liga/desliga) virou o estilo visual: clássico, Liquid Glass ou Material You
-    if (!d.settings.style && 'glass' in d.settings) d.settings.style = d.settings.glass ? 'glass' : 'classic';
-    delete d.settings.glass;
+    delete d.settings.glass; // "Efeito vidro" (liga/desliga) virou a escolha de estilo
+    // O estilo passou a seguir o aparelho (Automático) — aplicado uma vez; a escolha manual continua em Ajustes
+    if (!d.settings.styleAuto) { d.settings.style = 'auto'; d.settings.styleAuto = true; }
   }
   return d;
 }
@@ -248,6 +253,9 @@ function lastSets(exId) {
   const h = exHistory(exId);
   return h.length ? h[h.length - 1].sets.filter(isWork) : [];
 }
+function setPill(kind, s, mark) {
+  return `<span class="num ${s.t || ''}" ${s.warm ? 'style="opacity:.6"' : ''}><i>${mark}</i>${fmtSet(kind, s)}${s.rir != null ? ` <small>RIR ${s.rir >= 5 ? '5+' : s.rir}</small>` : ''}</span>`;
+}
 function fmtSet(kind, s) {
   if (!s) return '—';
   if (kind === 'w') return `${fmt(s.a ?? 0)} × ${fmt(s.b ?? 0, 0)}`;
@@ -319,17 +327,31 @@ const ACCENTS = [
   { id: 'mono', name: 'Grafite', dark: ['#F2F3EF', '#0E1013', '#F2F3EF'], light: ['#15181C', '#FFFFFF', '#15181C'] }
 ];
 const THEMES = [['auto', 'Automático'], ['light', 'Claro'], ['dark', 'Escuro'], ['black', 'Preto']];
+// [id, rótulo curto, nome, descrição]
 const STYLES = [
-  ['classic', 'Clássico', 'Visual sólido e simples, sem transparências'],
-  ['glass', 'Liquid Glass', 'Barra flutuante e painéis translúcidos, no estilo do iOS 26'],
-  ['material', 'Material You', 'Estilo do Android: cores tonais geradas a partir da cor de destaque, formas arredondadas e efeito de toque']
+  ['auto', 'Automático', 'Automático', 'Segue o aparelho: Liquid Glass no iPhone e iPad, Material You no Android e Clássico nos demais'],
+  ['classic', 'Clássico', 'Clássico', 'Visual sólido e simples, sem transparências'],
+  ['glass', 'Glass', 'Liquid Glass', 'Barra flutuante e painéis translúcidos, no estilo do iOS 26'],
+  ['material', 'Material', 'Material You', 'No estilo do Android, com cores tonais geradas a partir da cor de destaque, formas arredondadas e efeito de toque']
 ];
+// Estilo nativo de cada sistema (o mesmo teste está no index.html, para aplicar antes do app carregar)
+function deviceStyle() {
+  const ua = navigator.userAgent || '', plat = (navigator.userAgentData && navigator.userAgentData.platform) || '';
+  if (/android/i.test(ua) || /android/i.test(plat)) return 'material';
+  // iPadOS se apresenta como Mac: diferencia pela tela de toque
+  if (/iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) return 'glass';
+  return 'classic';
+}
 const lightMQ = matchMedia('(prefers-color-scheme: light)');
 function schemeNow() {
   const t = S.settings.theme;
   return t === 'light' || (t === 'auto' && lightMQ.matches) ? 'light' : 'dark';
 }
-function styleNow() { return STYLES.some(x => x[0] === S.settings.style) ? S.settings.style : 'glass'; }
+// Estilo em uso: o escolhido em Ajustes ou, no Automático, o do aparelho
+function styleNow() {
+  const v = S.settings.style;
+  return v !== 'auto' && STYLES.some(x => x[0] === v) ? v : deviceStyle();
+}
 function accentNow() { return ACCENTS.find(x => x.id === S.settings.accent) || ACCENTS[0]; }
 function accentVars(scheme) {
   const a = accentNow()[scheme];
@@ -465,28 +487,78 @@ document.addEventListener('pointerdown', e => {
 
 /* ================= UI: toast, sheet, som ================= */
 let toastTimer;
+const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 function toast(msg) {
   const t = $('#toast');
-  t.textContent = msg; t.hidden = false;
+  t.textContent = msg; t.hidden = false; t.classList.remove('out');
   t.style.animation = 'none'; void t.offsetWidth; t.style.animation = '';
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { t.hidden = true; }, 2400);
+  toastTimer = setTimeout(() => {
+    t.classList.add('out');
+    toastTimer = setTimeout(() => { t.hidden = true; t.classList.remove('out'); }, reduceMotion() ? 0 : 220);
+  }, 2400);
 }
 
-let sheetCtx = null;
-function openSheet(html, ctx = null) {
-  sheetCtx = ctx;
-  const sh = $('#sheet');
+let sheetCtx = null, sheetCleanup = null, sheetHideTimer = 0;
+function runSheetCleanup() { if (sheetCleanup) { const f = sheetCleanup; sheetCleanup = null; f(); } }
+// cleanup: chamado quando o painel fecha ou é trocado (ex.: desligar a câmera)
+function openSheet(html, ctx = null, cleanup = null) {
+  runSheetCleanup();
+  sheetCtx = ctx; sheetCleanup = cleanup;
+  const sh = $('#sheet'), bd = $('#sheet-backdrop');
+  const swap = !sh.hidden && !sh.classList.contains('closing');
+  clearTimeout(sheetHideTimer);
+  sh.classList.remove('closing', 'swap'); bd.classList.remove('closing');
+  sh.style.transform = ''; sh.style.transition = ''; bd.style.opacity = '';
   sh.innerHTML = '<div class="grab"></div>' + html;
-  sh.hidden = false; $('#sheet-backdrop').hidden = false;
+  if (swap) { void sh.offsetWidth; sh.classList.add('swap'); } // troca de conteúdo com o painel aberto
+  sh.hidden = false; bd.hidden = false;
   document.documentElement.style.overflow = 'hidden';
 }
 function closeSheet() {
   sheetCtx = null;
-  $('#sheet').hidden = true; $('#sheet-backdrop').hidden = true;
-  $('#sheet').innerHTML = '';
+  runSheetCleanup();
+  const sh = $('#sheet'), bd = $('#sheet-backdrop');
   document.documentElement.style.overflow = '';
+  if (sh.hidden || sh.classList.contains('closing')) return;
+  const done = () => {
+    sh.hidden = true; bd.hidden = true; sh.innerHTML = '';
+    sh.classList.remove('closing', 'swap'); bd.classList.remove('closing');
+    sh.style.transform = ''; sh.style.transition = ''; bd.style.opacity = '';
+  };
+  if (reduceMotion()) { done(); return; }
+  sh.classList.add('closing'); bd.classList.add('closing');
+  clearTimeout(sheetHideTimer);
+  sheetHideTimer = setTimeout(done, 260);
 }
+// Arrastar o painel para baixo (pela alça ou pelo título) fecha
+(() => {
+  let drag = null;
+  document.addEventListener('pointerdown', e => {
+    const sh = $('#sheet');
+    if (sh.hidden || sh.classList.contains('closing')) return;
+    const h = e.target.closest('#sheet .grab, #sheet .sheet-head');
+    if (!h || e.target.closest('button, input, a, label')) return;
+    drag = { y: e.clientY, t: performance.now(), dy: 0 };
+    sh.style.transition = 'none';
+  });
+  document.addEventListener('pointermove', e => {
+    if (!drag) return;
+    drag.dy = Math.max(0, e.clientY - drag.y);
+    $('#sheet').style.transform = `translateY(${drag.dy}px)`;
+    $('#sheet-backdrop').style.opacity = String(Math.max(0, 1 - drag.dy / 400));
+  });
+  const end = () => {
+    if (!drag) return;
+    const sh = $('#sheet'), v = drag.dy / Math.max(1, performance.now() - drag.t), dy = drag.dy;
+    drag = null;
+    if (dy > 110 || (v > 0.6 && dy > 30)) { closeSheet(); return; }
+    sh.style.transition = 'transform .3s cubic-bezier(.32,.72,0,1)';
+    sh.style.transform = ''; $('#sheet-backdrop').style.opacity = '';
+  };
+  document.addEventListener('pointerup', end);
+  document.addEventListener('pointercancel', end);
+})();
 function sheetHead(title, right = '') {
   return `<div class="sheet-head"><h3>${esc(title)}</h3>${right}<button class="icon-btn" data-act="closeSheet" aria-label="Fechar">${I.x}</button></div>`;
 }
@@ -533,14 +605,17 @@ const routes = [
   [/^#\/modelo\/([\w-]+)$/, viewModelo, 'fichas'],
   [/^#\/corpo$/, () => typeof viewCorpo === 'function' ? viewCorpo() : viewUpdating(), 'corpo'],
   [/^#\/assistente$/, () => typeof viewAssistente === 'function' ? viewAssistente() : viewUpdating(), 'fichas'],
-  [/^#\/exercicios$/, viewExercicios, 'exercicios'],
-  [/^#\/exercicio\/([\w-]+)$/, viewExercicio, 'exercicios'],
+  [/^#\/dieta$/, () => typeof viewDieta === 'function' ? viewDieta() : viewUpdating(), 'dieta'],
+  [/^#\/exercicios$/, viewExercicios, 'fichas'],
+  [/^#\/exercicio\/([\w-]+)$/, viewExercicio, 'fichas'],
   [/^#\/historico$/, viewHistorico, 'historico'],
   [/^#\/sessao\/([\w-]+)$/, viewSessao, 'historico'],
   [/^#\/treino$/, viewTreino, null],
   [/^#\/ajustes$/, viewAjustes, 'ajustes']
 ];
 let current = null, currentTab = null, lastHash = null, afterRender = null;
+const TAB_ROOTS = ['#/hoje', '#/fichas', '#/dieta', '#/historico', '#/corpo', '#/ajustes'];
+let navStack = [], viewAnim = false;
 
 function route() {
   const h = location.hash || '#/hoje';
@@ -549,10 +624,20 @@ function route() {
     if (m) {
       current = () => fn(...m.slice(1));
       currentTab = tab;
-      const changed = h !== lastHash;
+      const changed = h !== lastHash, first = lastHash == null;
+      let dir = 'none';
+      if (changed && !first) {
+        if (navStack[navStack.length - 2] === h) { dir = 'back'; navStack.pop(); }
+        else if (TAB_ROOTS.includes(h)) { dir = 'tab'; navStack = [h]; }
+        else { dir = 'forward'; navStack.push(h); }
+      } else if (first) navStack = [h];
       lastHash = h;
-      render();
-      if (changed) window.scrollTo(0, 0);
+      viewAnim = changed;
+      const update = () => { render(); if (changed) window.scrollTo(0, 0); };
+      if (dir !== 'none' && document.startViewTransition && !reduceMotion() && !document.hidden) {
+        document.documentElement.dataset.nav = dir;
+        document.startViewTransition(update);
+      } else update();
       return;
     }
   }
@@ -563,9 +648,21 @@ function render() {
   syncWakeLock();
   const html = current();
   if (html == null) return; // a view redirecionou
-  $('#view').innerHTML = html;
+  const view = $('#view');
+  view.innerHTML = html;
+  // Animações de entrada (gráficos, anéis, barras) só quando a tela muda, não a cada atualização
+  if (viewAnim) {
+    viewAnim = false;
+    view.classList.remove('anim'); void view.offsetWidth; view.classList.add('anim');
+    view.classList.toggle('no-vt', !document.startViewTransition);
+    clearTimeout(render.animT); render.animT = setTimeout(() => view.classList.remove('anim', 'no-vt'), 1400);
+  }
   document.body.classList.toggle('in-workout', location.hash === '#/treino');
-  document.querySelectorAll('#tabs a').forEach(a => a.classList.toggle('on', a.dataset.tab === currentTab));
+  const tabs = [...document.querySelectorAll('#tabs a')], ti = tabs.findIndex(a => a.dataset.tab === currentTab);
+  tabs.forEach((a, i) => a.classList.toggle('on', i === ti));
+  const bar = $('#tabs');
+  bar.style.setProperty('--ti', Math.max(0, ti)); bar.style.setProperty('--tn', tabs.length);
+  bar.classList.toggle('no-tab', ti < 0);
   renderDock();
   if (afterRender) { const f = afterRender; afterRender = null; f(); }
 }
@@ -671,6 +768,14 @@ function viewHoje() {
     html += `<div class="btn-row" style="margin-top:12px"><button class="btn" data-act="startEmpty">${I.plus}Treino livre</button><a class="btn" href="#/fichas">${I.list}Ver fichas</a></div>`;
   }
 
+  if (typeof dietTodayCard === 'function') html += dietTodayCard();
+  if (!S.active && backupDue()) {
+    const n = unbackedSessions();
+    html += `<div class="card backup-card"><div class="bk-row"><span class="bk-ic">${I.download}</span>
+      <div class="grow"><b>Faça um backup</b><div class="small muted">${n} treino${n > 1 ? 's' : ''} ainda não ${n > 1 ? 'estão salvos' : 'está salvo'} fora deste aparelho. Guarde o arquivo no iCloud Drive.</div></div></div>
+      <div class="btn-row" style="margin-top:12px"><button class="btn sm primary" data-act="exportData">Salvar backup</button><button class="btn sm" data-act="backupLater">Depois</button></div></div>`;
+  }
+
   const last = S.sessions[0];
   if (last) {
     html += `<h2 class="section">Último treino</h2><div class="list">
@@ -703,7 +808,8 @@ function routineRow(r, i) {
 function viewFichas() {
   let html = topBar({ right: `<button class="link-btn" data-act="newMenu">${I.plus.replace('<svg', '<svg class="inline-ic"')}Novo</button>` }) + `<h1 class="title">Fichas</h1>
     <a class="tpl-banner" href="#/assistente"><span class="tpl-ic">${I.sparkle}</span><div class="grow"><b>Montar meu treino</b><span>Responda algumas perguntas e escolha entre 3 opções</span></div>${I.chev}</a>
-    <a class="tpl-banner alt" href="#/modelos"><span class="tpl-ic">${I.list}</span><div class="grow"><b>Modelos prontos</b><span>PPL, Upper/Lower, ABC, ABCDE, em casa e mais</span></div>${I.chev}</a>`;
+    <a class="tpl-banner alt" href="#/modelos"><span class="tpl-ic">${I.list}</span><div class="grow"><b>Modelos prontos</b><span>PPL, Upper/Lower, ABC, ABCDE, em casa e mais</span></div>${I.chev}</a>
+    <a class="tpl-banner alt" href="#/exercicios"><span class="tpl-ic">${I.dumbbell}</span><div class="grow"><b>Exercícios</b><span>${allEx().length} exercícios com foto da execução, músculos e sua evolução</span></div>${I.chev}</a>`;
   if (!S.routines.length && !S.programs.length) {
     return html + `<div class="card">${emptyState(I.list, 'Nenhuma ficha ainda',
       'Uma <b>ficha</b> é a lista de exercícios de um dia de treino. Um <b>programa</b> agrupa várias fichas — por exemplo “Meu treino” com Push, Pull e Legs.',
@@ -890,7 +996,7 @@ function exerciseForm(ex, from) {
 let exQ = '', exG = '';
 function viewExercicios() {
   const chips = ['', ...GROUPS].map(g => `<button class="chip ${exG === g ? 'on' : ''}" data-act="exGroup" data-g="${esc(g)}">${g || 'Todos'}</button>`).join('');
-  return topBar({ right: `<button class="link-btn" data-act="newExercise">Novo</button>` }) + `<h1 class="title">Exercícios</h1>
+  return topBar({ back: '#/fichas', right: `<button class="link-btn" data-act="newExercise">Novo</button>` }) + `<h1 class="title">Exercícios</h1>
     <div class="search">${I.search}<input class="input" id="exq" type="search" placeholder="Buscar entre ${allEx().length} exercícios" value="${esc(exQ)}" autocomplete="off"></div>
     <div class="chips">${chips}</div>
     <div id="exlist">${exList()}</div>`;
@@ -932,13 +1038,26 @@ function viewExercicio(id) {
       <div class="kv"><span>Treinos com este exercício</span><b>${hist.length}</b></div>
       ${best.map(b => `<div class="kv"><span>Recorde · ${b.m.label}</span><b>${fmt(b.v)} ${b.m.unit}</b></div>`).join('')}
       <div class="kv"><span>Última vez</span><b>${relDay(hist[hist.length - 1].sess.start)}</b></div></div>`;
+    // Próximo treino: sugestão pela faixa de repetições da primeira ficha que tem o exercício
+    if (typeof suggestNext === 'function' && S.settings.progression !== false) {
+      const it = S.routines.flatMap(r => r.items).find(x => x.exId === id);
+      const sg = suggestNext(id, it ? it.reps : '');
+      if (sg && sg.type !== 'first') html += suggestionHTML(sg).replace('Hoje: ', 'Próximo treino: ');
+    }
+    if (kind === 'w' && typeof openCalc === 'function') {
+      const top = work.length ? work[work.length - 1].sets.reduce((a, b) => (b.a || 0) > (a.a || 0) ? b : a) : null;
+      html += `<div class="btn-row" style="margin:10px 0 0">
+        <button class="btn sm" data-act="calc" data-mode="plates" data-w="${top ? top.a : ''}">Anilhas</button>
+        <button class="btn sm" data-act="calc" data-mode="warm" data-w="${top ? top.a : ''}">Aquecimento</button>
+        <button class="btn sm" data-act="calc" data-mode="rm" data-w="${top ? top.a : ''}" data-r="${top ? top.b : ''}">1RM</button></div>`;
+    }
     html += `<h2 class="section">Evolução</h2>
       <div class="chips">${metrics.map(m => `<button class="chip ${m.id === metric.id ? 'on' : ''}" data-act="exMetric" data-ex="${id}" data-m="${m.id}">${m.label}</button>`).join('')}</div>
       <div class="card">${chartSVG(work.map(h => ({ t: h.t, v: metric.f(h.sets) })), metric.unit)}</div>`;
     html += `<h2 class="section">Histórico</h2><div class="card" style="padding:4px 16px">` +
       hist.slice().reverse().slice(0, 30).map(h => `<a class="sess-ex" href="#/sessao/${h.sess.id}" style="display:block">
         <div class="name" style="display:flex;justify-content:space-between"><span>${dateLong(h.sess.start)}</span>${I.chev}</div>
-        <div class="set-pills">${h.sets.map(s => `<span class="num" ${s.warm ? 'style="opacity:.6"' : ''}>${s.warm ? 'Aq · ' : ''}${fmtSet(kind, s)}</span>`).join('')}</div></a>`).join('') + '</div>';
+        <div class="set-pills">${(n => h.sets.map(s => setPill(kind, s, setMark(s) || ++n)))(0).join('')}</div></a>`).join('') + '</div>';
   }
   if (ex && ex.custom) html += `<div style="margin-top:18px"><button class="btn danger block" data-act="deleteExercise" data-id="${id}">${I.trash}Excluir exercício</button></div>`;
   return html;
@@ -969,7 +1088,7 @@ function chartSVG(points, unit, opts = {}) {
       <div><b style="font-size:24px" class="num">${fmt(lastV, dec)}</b> <span class="muted small">${unit}</span></div>
       <span class="badge ${good ? 'accent' : ''} num">${diff >= 0 ? '+' : '−'}${fmt(Math.abs(diff), dec)} ${unit}</span></div>
     <svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Gráfico de evolução">
-      ${grid}${goalLine}<path class="area" d="${area}"/><path class="line" d="${line}"/>${dots}
+      ${grid}${goalLine}<path class="area" d="${area}"/><path class="line" pathLength="1" d="${line}"/>${dots}
       <text x="${pl}" y="${H - 6}">${dateShort(pts[0].t)}</text><text x="${W - pr}" y="${H - 6}" text-anchor="end">${dateShort(pts[pts.length - 1].t)}</text>
     </svg>`;
 }
@@ -999,15 +1118,39 @@ function startFromRoutine(r) {
   startWorkout(r.name, r.id, r.items.map(it => makeActiveExercise(it.exId, it.sets, it.reps, it.rest, it.note)));
 }
 
+// Valor sugerido para um campo vazio: a progressão automática, senão o último treino, senão a série anterior
 function placeholder(ex, i, field) {
-  const last = lastSets(ex.exId);
-  const ref = last[i] || last[last.length - 1];
-  if (ref && ref[field] != null) return fmt(ref[field], 2);
+  // Drop set: ~20% menos carga que a série anterior
+  if (ex.sets[i].t === 'drop' && i > 0) {
+    const pv = ex.sets[i - 1][field] !== '' ? ex.sets[i - 1][field] : placeholder(ex, i - 1, field);
+    if (field !== 'a' || num(pv) == null || typeof loadStep !== 'function') return pv;
+    const step = loadStep(getEx(ex.exId));
+    return fmtIn(Math.max(step, roundTo(num(pv) * 0.8, step)));
+  }
+  if (!ex.sets[i].warm) {
+    const wi = ex.sets.slice(0, i).filter(x => !x.warm).length;
+    const sg = typeof suggestionFor === 'function' ? suggestionFor(ex) : null;
+    const ref = sg && sg.sets.length ? sg.sets[wi] || sg.sets[sg.sets.length - 1] : null;
+    if (ref && ref[field] != null) return fmtIn(ref[field]);
+    const last = lastSets(ex.exId), old = last[wi] || last[last.length - 1];
+    if (old && old[field] != null) return fmtIn(old[field]);
+  }
   for (let j = i - 1; j >= 0; j--) if (ex.sets[j][field] !== '') return ex.sets[j][field];
   return '';
 }
+// Tipo da série: normal (''), aquecimento, drop set ou até a falha
+const SET_TYPES = [
+  ['', 'Normal', 'Conta no volume, nos recordes e na progressão'],
+  ['warm', 'Aquecimento', 'Não conta no volume nem nos recordes', 'A'],
+  ['drop', 'Drop set', 'Reduz a carga e continua sem descanso; conta no volume', 'D'],
+  ['fail', 'Até a falha', 'Série levada até não conseguir mais nenhuma repetição', 'F']
+];
+const setType = s => s.warm ? 'warm' : s.t || '';
+const setMark = s => (SET_TYPES.find(t => t[0] === setType(s)) || [])[3];
 
+let justDone = null; // série recém-concluída (anima o ✓)
 function viewTreino() {
+  const pop = justDone; justDone = null;
   const a = S.active;
   if (!a) { location.replace('#/hoje'); return null; }
   const total = sum(a.exercises.map(e => e.sets.length));
@@ -1032,25 +1175,30 @@ function viewTreino() {
     const K = KINDS[ex.kind];
     const last = lastSets(ex.exId);
     const allDone = ex.sets.length && ex.sets.every(s => s.done);
-    const head = `<tr><th>Série</th><th>Anterior</th><th>${K.a}</th>${K.b ? `<th>${K.b}</th>` : ''}<th>✓</th></tr>`;
-    let wn = 0;
+    const rir = S.settings.rir !== false && (ex.kind === 'w' || ex.kind === 'bw');
+    const head = `<tr><th>Série</th><th>Anterior</th><th>${K.a}</th>${K.b ? `<th>${K.b}</th>` : ''}${rir ? '<th><button class="th-btn" data-act="rirHelp">RIR</button></th>' : ''}<th>✓</th></tr>`;
+    let wn = 0, wi = 0;
     const rows = ex.sets.map((s, i) => {
-      const label = s.warm ? 'A' : String(++wn);
-      const prev = last[i] ? fmtSet(ex.kind, last[i]) : '—';
+      const ty = setType(s), label = setMark(s) || String(++wn);
+      const ref = s.warm ? null : last[wi++];
+      const prev = ref ? fmtSet(ex.kind, ref) : '—';
       const inp = f => `<input type="text" inputmode="decimal" value="${esc(s[f])}" placeholder="${esc(placeholder(ex, i, f))}" data-wf="${f}" data-x="${x}" data-s="${i}" aria-label="${f === 'a' ? K.a : K.b} da série ${label}">`;
-      return `<tr class="${s.done ? 'done' : ''}">
-        <td><button class="setno ${s.warm ? 'warm' : ''}" data-act="toggleWarm" data-x="${x}" data-s="${i}" aria-label="Alternar aquecimento">${label}</button></td>
+      const rirSel = `<select class="rir" data-rir data-x="${x}" data-s="${i}" aria-label="RIR da série ${label}">${['', 0, 1, 2, 3, 4, 5].map(v => `<option value="${v}" ${String(s.rir ?? '') === String(v) ? 'selected' : ''}>${v === '' ? '–' : v === 5 ? '5+' : v}</option>`).join('')}</select>`;
+      return `<tr class="${s.done ? 'done' : ''} ${pop === `${x}-${i}` ? 'pop' : ''}">
+        <td><button class="setno ${ty}" data-act="setMenu" data-x="${x}" data-s="${i}" aria-label="Tipo da série ${label}">${label}</button></td>
         <td class="prev num">${prev}</td>
-        <td>${inp('a')}</td>${K.b ? `<td>${inp('b')}</td>` : ''}
+        <td>${inp('a')}</td>${K.b ? `<td>${inp('b')}</td>` : ''}${rir ? `<td class="rirc">${s.warm ? '' : rirSel}</td>` : ''}
         <td><button class="check" data-act="toggleSet" data-x="${x}" data-s="${i}" aria-label="Concluir série">${I.check}</button></td></tr>`;
     }).join('');
+    const sg = typeof suggestionFor === 'function' && !allDone ? suggestionFor(ex) : null;
     const targetTxt = [ex.sets.filter(s => !s.warm).length + ' × ' + (ex.target || '—') + (ex.kind === 's' ? 's' : ex.kind === 'c' ? ' min' : ''), `descanso ${fmtRest(ex.rest)}`].join(' · ');
-    html += `<div class="ex-card ${allDone ? 'complete' : ''}">
+    html += `<div class="ex-card ${allDone ? 'complete' : ''} ${allDone && pop && pop.split('-')[0] === String(x) ? 'just-complete' : ''}">
       <div class="ex-title"><button class="thumb-btn" data-act="howTo" data-id="${ex.exId}" aria-label="Ver execução">${thumb(getEx(ex.exId))}</button>
         <div class="grow"><a class="name" href="#/exercicio/${ex.exId}">${esc(ex.name)}</a><div class="target num">${targetTxt}</div></div>
         <button class="icon-btn" data-act="exMenu" data-x="${x}" aria-label="Opções do exercício" style="margin:-8px -6px 0 0">${I.more}</button></div>
       ${ex.note ? `<div class="ex-note">${esc(ex.note)}</div>` : ''}
-      <table class="sets">${head}${rows}</table>
+      ${sg ? suggestionHTML(sg) : ''}
+      <table class="sets ${rir ? 'has-rir' : ''}"><colgroup><col class="c-no"><col class="c-prev"><col>${K.b ? '<col>' : ''}${rir ? '<col class="c-rir">' : ''}<col class="c-ok"></colgroup>${head}${rows}</table>
       <div class="set-actions">
         <button class="btn sm" data-act="addSet" data-x="${x}">${I.plus}Série</button>
         ${ex.sets.length > 1 ? `<button class="btn sm" data-act="removeSet" data-x="${x}">Remover série</button>` : ''}
@@ -1159,6 +1307,9 @@ function commitWorkout(updateRoutine) {
       sets: e.sets.filter(s => s.done).map(s => {
         const o = { a: num(s.a), b: e.kind === 's' ? null : num(s.b) };
         if (s.warm) o.warm = true;
+        if (s.t) o.t = s.t;
+        const rir = num(s.rir);
+        if (rir != null && !s.warm) o.rir = rir;
         return o;
       })
     })).filter(e => e.sets.length)
@@ -1189,19 +1340,52 @@ function commitWorkout(updateRoutine) {
   go(`#/sessao/${sess.id}`);
 }
 
+// Confete (comemoração no fim do treino)
+function confetti(n = 80) {
+  if (reduceMotion() || !Element.prototype.animate) return;
+  const cs = getComputedStyle(document.documentElement);
+  const colors = [cs.getPropertyValue('--accent').trim(), cs.getPropertyValue('--gold').trim(), '#4DA3FF', '#FF6FAE', '#34D399', '#FFFFFF'];
+  const box = document.createElement('div');
+  box.className = 'confetti'; document.body.appendChild(box);
+  const W = innerWidth, H = innerHeight;
+  for (let i = 0; i < n; i++) {
+    const p = document.createElement('i'), x0 = W / 2 + (Math.random() - .5) * 60, y0 = H * .32;
+    const dx = (Math.random() - .5) * W * 1.1, up = 120 + Math.random() * 220, rot = (Math.random() - .5) * 900;
+    p.style.cssText = `left:${x0}px;top:${y0}px;background:${colors[i % colors.length]};width:${6 + Math.random() * 5}px;height:${8 + Math.random() * 8}px`;
+    box.appendChild(p);
+    p.animate([
+      { transform: 'translate(0,0) rotate(0)', opacity: 1 },
+      { transform: `translate(${dx * .55}px,${-up}px) rotate(${rot * .4}deg)`, opacity: 1, offset: .28 },
+      { transform: `translate(${dx}px,${H - y0 + 60}px) rotate(${rot}deg)`, opacity: .85 }
+    ], { duration: 1700 + Math.random() * 1100, easing: 'cubic-bezier(.25,.6,.45,1)', delay: Math.random() * 120, fill: 'forwards' });
+  }
+  setTimeout(() => box.remove(), 3200);
+}
+// Números que sobem até o valor (resumo do treino)
+function countUp(root) {
+  if (reduceMotion()) return;
+  root.querySelectorAll('[data-count]').forEach(el => {
+    const to = +el.dataset.count, f = el.dataset.fmt === 'int' ? fmtInt : v => String(Math.round(v)), t0 = performance.now();
+    const step = t => { const k = Math.min(1, (t - t0) / 800), e = 1 - (1 - k) ** 3; el.textContent = f(to * e); if (k < 1) requestAnimationFrame(step); };
+    requestAnimationFrame(step);
+  });
+}
 function showSummary(sess) {
   const vol = sessVolume(sess);
   const prs = sess.prs || [];
   openSheet(`<div class="sheet-body"><div class="summary-big">
-      <div style="display:inline-grid;place-items:center;width:64px;height:64px;border-radius:20px;background:var(--accent);color:var(--accent-ink)">
+      <div class="trophy-ic" style="display:inline-grid;place-items:center;width:64px;height:64px;border-radius:20px;background:var(--accent);color:var(--accent-ink)">
         <svg viewBox="0 0 24 24" style="width:34px;height:34px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round">${I.trophy.replace(/<\/?svg[^>]*>/g, '')}</svg></div>
       <h3>Treino concluído!</h3><div class="muted">${esc(sess.name)}</div></div>
     <div class="stats" style="margin-top:16px">
       <div class="stat"><b class="num">${fmtDur(sess.end - sess.start)}</b><span>duração</span></div>
-      <div class="stat"><b class="num">${sessSetCount(sess)}</b><span>séries</span></div>
-      <div class="stat"><b class="num">${vol ? fmtInt(vol) : '—'}</b><span>kg de volume</span></div></div>
+      <div class="stat"><b class="num" data-count="${sessSetCount(sess)}">${sessSetCount(sess)}</b><span>séries</span></div>
+      <div class="stat"><b class="num" ${vol ? `data-count="${Math.round(vol)}" data-fmt="int"` : ''}>${vol ? fmtInt(vol) : '—'}</b><span>kg de volume</span></div></div>
     ${prs.length ? `<h2 class="section">Recordes pessoais 🎉</h2><div class="list">${prs.map(p => `<div class="kv"><span>${esc(p.name)} · ${p.label}</span><b style="color:var(--gold)">${fmt(p.value)} ${p.unit}</b></div>`).join('')}</div>` : ''}
-    </div><div class="sheet-foot"><button class="btn primary block" data-act="closeSheet">Fechar</button></div>`);
+    </div><div class="sheet-foot stack">${backupDue() ? `<button class="btn block" data-act="exportData">${I.download}Salvar backup · ${unbackedSessions()} treinos sem backup</button>` : ''}
+      <button class="btn primary block" data-act="closeSheet">Fechar</button></div>`);
+  countUp($('#sheet'));
+  setTimeout(() => confetti(prs.length ? 120 : 70), 150);
 }
 
 /* ================= Tela: Histórico ================= */
@@ -1232,6 +1416,7 @@ function viewHistorico() {
       <div class="stat"><b class="num">${S.sessions.length}</b><span>treinos no total</span></div>
       <div class="stat"><b class="num">${weekVol >= 10000 ? fmt(weekVol / 1000) + 't' : fmtInt(weekVol)}</b><span>kg nesta semana</span></div>
       <div class="stat"><b class="num">${fmtDur(avgDur)}</b><span>duração média</span></div></div>`;
+  if (typeof volumeHTML === 'function') html += volumeHTML();
 
   let month = '';
   for (const s of S.sessions) {
@@ -1264,7 +1449,7 @@ function viewSessao(id) {
     let wn = 0;
     return `<a class="sess-ex" href="#/exercicio/${e.exId}" style="display:block">
       <div class="name" style="display:flex;justify-content:space-between;gap:8px"><span>${esc(exName(e.exId, e.name))}${prKeys.has(e.exId) ? ' <span class="badge gold">PR</span>' : ''}</span>${I.chev}</div>
-      <div class="set-pills">${e.sets.map(x => `<span class="num" ${x.warm ? 'style="opacity:.6"' : ''}><i>${x.warm ? 'A' : ++wn}</i>${fmtSet(e.kind, x)}</span>`).join('')}</div></a>`;
+      <div class="set-pills">${e.sets.map(x => setPill(e.kind, x, setMark(x) || ++wn)).join('')}</div></a>`;
   }).join('') + '</div>';
   if (s.notes) html += `<h2 class="section">Anotações</h2><div class="card" style="white-space:pre-wrap">${esc(s.notes)}</div>`;
   html += `<div class="stack" style="margin-top:18px"><button class="btn primary block" data-act="repeatSession" data-id="${id}">${I.play}Repetir este treino</button></div>`;
@@ -1275,14 +1460,17 @@ function viewSessao(id) {
 function viewAjustes() {
   const standalone = window.navigator.standalone || matchMedia('(display-mode: standalone)').matches;
   const scheme = schemeNow(), style = styleNow();
+  const chosen = STYLES.some(x => x[0] === S.settings.style) ? S.settings.style : 'auto';
   return `<div class="top"></div><h1 class="title">Ajustes</h1>
     <h2 class="section">Aparência</h2>
     <div class="card look">
       <div class="look-label">Tema</div>
       <div class="seg" role="radiogroup" aria-label="Tema">${THEMES.map(([v, l]) => `<button class="${S.settings.theme === v ? 'on' : ''}" data-act="setTheme" data-v="${v}" role="radio" aria-checked="${S.settings.theme === v}">${l}</button>`).join('')}</div>
       <div class="look-label">Estilo</div>
-      <div class="seg seg3" role="radiogroup" aria-label="Estilo">${STYLES.map(([v, l]) => `<button class="${style === v ? 'on' : ''}" data-act="setStyle" data-v="${v}" role="radio" aria-checked="${style === v}">${l}</button>`).join('')}</div>
-      <p class="small muted look-desc">${STYLES.find(x => x[0] === style)[2]}</p>
+      <div class="seg" role="radiogroup" aria-label="Estilo">${STYLES.map(([v, l, name]) => `<button class="${chosen === v ? 'on' : ''}" data-act="setStyle" data-v="${v}" role="radio" aria-checked="${chosen === v}" aria-label="${name}">${l}</button>`).join('')}</div>
+      <p class="small muted look-desc">${chosen === 'auto'
+        ? `${STYLES[0][3]}. Neste aparelho: <b>${STYLES.find(x => x[0] === style)[2]}</b>.`
+        : `<b>${STYLES.find(x => x[0] === chosen)[2]}:</b> ${STYLES.find(x => x[0] === chosen)[3].replace(/^./, c => c.toLowerCase())}.`}</p>
       <div class="look-label">${style === 'material' ? 'Cor (a paleta é gerada a partir dela)' : 'Cor de destaque'}</div>
       <div class="swatches" role="radiogroup" aria-label="Cor de destaque">${ACCENTS.map(a => {
         const on = (S.settings.accent || 'limao') === a.id;
@@ -1298,6 +1486,11 @@ function viewAjustes() {
         <select class="input" style="width:auto;min-height:38px;padding:6px 34px 6px 12px" data-setting="rest">${REST_OPTIONS.filter(Boolean).map(s => `<option value="${s}" ${s === S.settings.rest ? 'selected' : ''}>${fmtRest(s)}</option>`).join('')}</select></label>
       <label class="row"><div class="grow"><div class="name">Som ao fim do descanso</div><div class="sub">Alarme quando o descanso acaba</div></div>
         <span class="switch"><input type="checkbox" data-setting="sound" ${S.settings.sound ? 'checked' : ''}><i></i></span></label>
+      <label class="row"><div class="grow"><div class="name">Sugerir carga e repetições</div><div class="sub wrap">Progressão automática: o app sugere quanto fazer em cada exercício com base no último treino</div></div>
+        <span class="switch"><input type="checkbox" data-setting="progression" ${S.settings.progression !== false ? 'checked' : ''}><i></i></span></label>
+      <label class="row"><div class="grow"><div class="name">Registrar RIR</div><div class="sub wrap">Repetições na reserva: quantas ainda sobravam ao fim da série. Opcional; deixa a progressão mais precisa</div></div>
+        <span class="switch"><input type="checkbox" data-setting="rir" ${S.settings.rir !== false ? 'checked' : ''}><i></i></span></label>
+      ${typeof openCalc === 'function' ? `<button class="row" data-act="calc" data-mode="plates"><div class="grow"><div class="name">Calculadoras</div><div class="sub">Anilhas, aquecimento e 1RM</div></div>${I.chev}</button>` : ''}
       <label class="row"><div class="grow"><div class="name">Manter a tela ligada no treino</div><div class="sub wrap">A tela não apaga sozinha enquanto há um treino em andamento</div></div>
         <span class="switch"><input type="checkbox" data-setting="keepAwake" ${S.settings.keepAwake ? 'checked' : ''}><i></i></span></label>
       <label class="row"><div class="grow"><div class="name">Usar o Timer do iPhone</div><div class="sub wrap">Ao terminar uma série, inicia o Timer do relógio pelo app Atalhos: aparece na tela bloqueada e na Dynamic Island, com o alarme do iPhone</div></div>
@@ -1321,13 +1514,15 @@ function viewAjustes() {
 
     <h2 class="section">Seus dados</h2>
     <div class="list">
-      <button class="row" data-act="exportData"><div class="grow"><div class="name">Exportar backup</div><div class="sub">Salve um arquivo .json no app Arquivos ou iCloud</div></div>${I.chev}</button>
+      <button class="row" data-act="exportData"><div class="grow"><div class="name">Exportar backup</div><div class="sub">${backupLabel()}</div></div>${I.chev}</button>
       <label class="row" style="cursor:pointer"><div class="grow"><div class="name">Importar backup</div><div class="sub">Substitui os dados atuais pelos do arquivo</div></div>${I.chev}
         <input type="file" accept="application/json,.json" id="importFile" hidden></label>
+      ${prevCopy() ? `<button class="row" data-act="undoImport"><div class="grow"><div class="name">Desfazer a última importação</div><div class="sub">Volta aos dados de antes de importar (${dateShort(prevCopy().at)})</div></div>${I.chev}</button>` : ''}
+      ${storageSafe != null ? `<div class="row"><div class="grow"><div class="name">Proteção contra limpeza automática</div><div class="sub wrap">${storageSafe ? 'Ativada: o sistema não apaga os dados do app para liberar espaço' : 'Não concedida pelo navegador: mantenha os backups em dia'}</div></div><span class="badge ${storageSafe ? 'accent' : 'gold'}">${storageSafe ? 'Ativa' : 'Sem'}</span></div>` : ''}
       <a class="row" href="#/modelos"><div class="grow"><div class="name">Modelos de treino prontos</div><div class="sub">PPL, Upper/Lower, ABC, ABCDE, em casa e mais</div></div>${I.chev}</a>
       <button class="row" data-act="wipeData"><div class="grow"><div class="name" style="color:var(--danger)">Apagar todos os dados</div></div></button>
     </div>
-    <p class="small muted" style="margin:10px 4px 0">${S.programs.length} programas · ${S.routines.length} fichas · ${S.sessions.length} treinos · ${(S.body || []).length} registros de medidas · ${S.custom.length} exercícios personalizados. Tudo fica salvo só neste aparelho — exporte um backup de vez em quando.</p>
+    <p class="small muted" style="margin:10px 4px 0">${S.programs.length} programas · ${S.routines.length} fichas · ${S.sessions.length} treinos · ${(S.body || []).length} registros de medidas · ${S.custom.length} exercícios personalizados. Tudo fica salvo só neste aparelho. Exporte um backup e guarde no iCloud Drive (app Arquivos) para não perder nada se trocar ou perder o celular.</p>
 
     ${standalone ? '' : `<h2 class="section">Instalar no iPhone</h2>
     <div class="card small" style="line-height:1.55">
@@ -1337,9 +1532,44 @@ function viewAjustes() {
       <span class="muted">O app abre em tela cheia, funciona offline e mantém seus dados.</span></div>`}
 
     <div style="text-align:center;margin-top:22px"><button class="link-btn" data-act="checkUpdate">Procurar atualização</button></div>
-    <p class="small muted" style="text-align:center;margin-top:6px">Ficha · versão 1.7<br>
+    <p class="small muted" style="text-align:center;margin-top:6px">Ficha · versão 2.0<br>
       Fotos e músculos dos exercícios: <a href="https://github.com/yuhonas/free-exercise-db" target="_blank" rel="noopener" style="text-decoration:underline">free-exercise-db</a> (domínio público)<br>
-      Desenho do mapa muscular: <a href="https://github.com/GV79/react-body-highlighter" target="_blank" rel="noopener" style="text-decoration:underline">react-body-highlighter</a> (MIT)</p>`;
+      Desenho do mapa muscular: <a href="https://github.com/GV79/react-body-highlighter" target="_blank" rel="noopener" style="text-decoration:underline">react-body-highlighter</a> (MIT)<br>
+      Alimentos: TACO, 4ª ed. (NEPA/UNICAMP) e <a href="https://world.openfoodfacts.org" target="_blank" rel="noopener" style="text-decoration:underline">Open Food Facts</a> (ODbL)</p>`;
+}
+
+/* ================= Segurança dos dados ================= */
+// Tudo fica no aparelho: pede ao navegador para não apagar os dados quando faltar espaço,
+// lembra de fazer backup e guarda uma cópia antes de importar (para desfazer).
+const PREV_KEY = 'ficha.prev';
+let storageSafe = null; // true/false depois de perguntar ao navegador
+function protectStorage() {
+  if (!navigator.storage || !navigator.storage.persist) return;
+  navigator.storage.persisted()
+    .then(p => p || navigator.storage.persist())
+    .then(p => { storageSafe = !!p; })
+    .catch(() => { storageSafe = false; });
+}
+function unbackedSessions() { return S.sessions.filter(s => s.end > (S.settings.lastBackup || 0)).length; }
+function backupDue() {
+  return unbackedSessions() >= 3 && Date.now() - (S.settings.lastBackup || 0) > 7 * 864e5 && Date.now() > (S.settings.backupSnooze || 0);
+}
+function markBackup() {
+  S.settings.lastBackup = Date.now(); S.settings.backupSnooze = 0; save();
+  toast('Backup salvo'); if ($('#sheet').hidden) rerender();
+}
+function backupLabel() {
+  const t = S.settings.lastBackup;
+  return t ? `Último: ${relDay(t).toLowerCase()}${unbackedSessions() ? ` · ${unbackedSessions()} treino${unbackedSessions() > 1 ? 's' : ''} depois dele` : ''}` : 'Nenhum backup feito ainda';
+}
+function prevCopy() {
+  try { const d = JSON.parse(localStorage.getItem(PREV_KEY)); return d && d.data && Date.now() - d.at < 30 * 864e5 ? d : null; } catch (e) { return null; }
+}
+// Estado a partir de um backup (ou da cópia de segurança)
+function fromBackup(d) {
+  const b = blank();
+  migrate(d);
+  return { ...b, settings: { ...b.settings, ...(d.settings || {}) }, custom: d.custom || [], videos: d.videos || {}, profile: d.profile || null, body: d.body || [], bodyGoal: d.bodyGoal || {}, food: d.food || b.food, programs: d.programs || [], routines: d.routines, sessions: d.sessions.sort((x, y) => y.start - x.start), active: d.active || null };
 }
 
 function exportData() {
@@ -1348,14 +1578,14 @@ function exportData() {
   const name = `ficha-backup-${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}.json`;
   const file = new File([data], name, { type: 'application/json' });
   if (navigator.canShare && navigator.canShare({ files: [file] })) {
-    navigator.share({ files: [file], title: 'Backup do Ficha' }).catch(() => {});
+    navigator.share({ files: [file], title: 'Backup do Ficha' }).then(markBackup).catch(() => {});
     return;
   }
   const url = URL.createObjectURL(file);
   const a = document.createElement('a');
   a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 2000);
-  toast('Backup exportado');
+  markBackup();
 }
 function importData(file) {
   const reader = new FileReader();
@@ -1367,10 +1597,9 @@ function importData(file) {
       title: 'Importar backup?', text: `O arquivo tem ${d.routines.length} fichas e ${d.sessions.length} treinos. Os dados atuais deste aparelho serão substituídos.`,
       ok: 'Importar', danger: true,
       onOk: () => {
-        const b = blank();
-        migrate(d);
-        S = { ...b, settings: { ...b.settings, ...(d.settings || {}) }, custom: d.custom || [], videos: d.videos || {}, profile: d.profile || null, body: d.body || [], bodyGoal: d.bodyGoal || {}, programs: d.programs, routines: d.routines, sessions: d.sessions.sort((x, y) => y.start - x.start), active: d.active || null };
-        save(); applyLook(); toast('Backup importado'); go('#/hoje');
+        try { localStorage.setItem(PREV_KEY, JSON.stringify({ at: Date.now(), data: S })); } catch (e) { /* sem espaço para a cópia */ }
+        S = fromBackup(d);
+        save(); applyLook(); toast('Backup importado — dá para desfazer em Ajustes'); go('#/hoje');
       }
     });
   };
@@ -1378,13 +1607,14 @@ function importData(file) {
 }
 
 /* ================= Dock (descanso / treino em andamento) ================= */
+let dockSig = { rest: false, active: false }; // o que já estava no dock (para animar só o que aparece)
 function renderDock() {
   const dock = $('#dock');
   const a = S.active;
   let html = '';
   if (a && a.rest && a.rest.end > Date.now()) {
     const left = (a.rest.end - Date.now()) / 1000, C = 2 * Math.PI * 19;
-    html += `<div class="dock-bar rest">
+    html += `<div class="dock-bar rest ${dockSig.rest ? '' : 'in'}">
       <svg class="ring" viewBox="0 0 44 44"><circle class="bg" cx="22" cy="22" r="19"/><circle class="fg" cx="22" cy="22" r="19" stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - left / a.rest.total)}" data-ring="${C}"/></svg>
       ${S.settings.iosTimer
         ? `<button class="grow" data-act="iosTimerSync" aria-label="Enviar o tempo ao Timer do iPhone"><div class="lbl">Descanso ↻</div><div class="big num" data-rest>${clock(left)}</div></button>`
@@ -1394,11 +1624,12 @@ function renderDock() {
       <button class="btn sm" data-act="restSkip">Pular</button></div>`;
   }
   if (a && location.hash !== '#/treino') {
-    html += `<a class="dock-bar" href="#/treino"><div class="grow"><div class="lbl">Treino em andamento</div>
+    html += `<a class="dock-bar ${dockSig.active ? '' : 'in'}" href="#/treino"><div class="grow"><div class="lbl">Treino em andamento</div>
       <div style="font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(a.name)} · <span class="num" data-elapsed="${a.start}">${clock((Date.now() - a.start) / 1000)}</span></div></div>
       <span class="btn sm primary" style="background:var(--accent);color:var(--accent-ink)">Abrir</span></a>`;
   }
   dock.innerHTML = html;
+  dockSig = { rest: !!dock.querySelector('.rest'), active: !!dock.querySelector('a.dock-bar') };
 }
 
 function tick() {
@@ -1643,14 +1874,48 @@ const ACT = {
     }
     if (ex.kind === 'w' && s.a === '') s.a = '0';
     s.done = true;
+    justDone = `${el.dataset.x}-${i}`;
     unlockAudio();
-    startRest(ex.rest);
+    const next = ex.sets[i + 1];
+    if (!(next && next.t === 'drop' && !next.done)) startRest(ex.rest); // drop set vem sem descanso
     save(); rerender();
   },
-  toggleWarm: el => {
-    const s = S.active.exercises[+el.dataset.x].sets[+el.dataset.s];
-    s.warm = !s.warm; save(); rerender();
-    toast(s.warm ? 'Série de aquecimento (não conta em recordes)' : 'Série normal');
+  setMenu: el => {
+    const x = +el.dataset.x, i = +el.dataset.s, ex = S.active.exercises[x], cur = setType(ex.sets[i]);
+    openSheet(`${sheetHead('Tipo de série')}<div class="sheet-body"><div class="list">${SET_TYPES.map(([v, l, d, m]) => `
+      <button class="row" data-act="setType" data-x="${x}" data-s="${i}" data-v="${v}"><span class="setno ${v}">${m || '1'}</span>
+        <div class="grow"><div class="name">${l}</div><div class="sub wrap">${d}</div></div>${cur === v ? I.check.replace('<svg', '<svg class="chev" style="stroke:var(--accent-text)"') : ''}</button>`).join('')}</div>
+      ${ex.sets.length > 1 ? `<button class="btn danger block" style="margin-top:14px" data-act="setDelete" data-x="${x}" data-s="${i}">${I.trash}Remover esta série</button>` : ''}</div>`);
+  },
+  setType: el => {
+    const s = S.active.exercises[+el.dataset.x].sets[+el.dataset.s], v = el.dataset.v;
+    s.warm = v === 'warm';
+    if (v === 'drop' || v === 'fail') s.t = v; else delete s.t;
+    if (v === 'fail' && (s.rir == null || s.rir === '')) s.rir = '0';
+    if (s.warm) delete s.rir;
+    save(); closeSheet(); rerender();
+  },
+  setDelete: el => {
+    const ex = S.active.exercises[+el.dataset.x];
+    if (ex.sets.length > 1) ex.sets.splice(+el.dataset.s, 1);
+    save(); closeSheet(); rerender();
+  },
+  rirHelp: () => openSheet(`${sheetHead('RIR: repetições na reserva')}<div class="sheet-body">
+    <p style="margin:0 0 12px;line-height:1.5">Quantas repetições você ainda conseguiria fazer ao terminar a série, com boa execução.</p>
+    <div class="list">${[['0', 'Falha: não sairia mais nenhuma'], ['1–2', 'Bem perto da falha (o ideal para hipertrofia)'], ['3–4', 'Moderado: sobrou um pouco'], ['5+', 'Leve: sobrou bastante']].map(([v, t]) => `<div class="kv"><span>${t}</span><b>${v}</b></div>`).join('')}</div>
+    <p class="small muted" style="margin:12px 2px 0;line-height:1.5">É opcional. Quando você registra, a progressão automática acerta melhor o próximo passo: se sobrou muito, ela sobe mais a carga. Dá para esconder em Ajustes → Treino.</p></div>`),
+  addWarmup: el => {
+    const x = +el.dataset.x, ex = S.active.exercises[x], g = getEx(ex.exId);
+    const i0 = ex.sets.findIndex(s => !s.warm);
+    const W = i0 < 0 ? null : num(ex.sets[i0].a) || num(placeholder(ex, i0, 'a'));
+    closeSheet();
+    if (!W) { toast('Informe a carga da primeira série'); return; }
+    const barbell = g && g.equip === 'Barra';
+    const sets = warmupSets(W, barbell ? barNow() : 0, loadStep(g));
+    if (!sets.length) { toast('Carga leve demais para aquecimento'); return; }
+    ex.sets = sets.map(w => ({ a: fmtIn(w.w), b: String(w.r), done: false, warm: true })).concat(ex.sets.filter(s => !s.warm || s.done));
+    save(); rerender();
+    toast(`${sets.length} séries de aquecimento até ${fmt(W, 2)} kg`);
   },
   addSet: el => {
     const ex = S.active.exercises[+el.dataset.x];
@@ -1671,6 +1936,8 @@ const ACT = {
       <div class="list" style="margin-top:16px">
         ${x > 0 ? `<button class="row" data-act="exMove" data-x="${x}" data-d="-1"><div class="grow name">Mover para cima</div></button>` : ''}
         ${x < S.active.exercises.length - 1 ? `<button class="row" data-act="exMove" data-x="${x}" data-d="1"><div class="grow name">Mover para baixo</div></button>` : ''}
+        ${ex.kind === 'w' && typeof warmupSets === 'function' ? `<button class="row" data-act="addWarmup" data-x="${x}"><div class="grow"><div class="name">Adicionar aquecimento</div><div class="sub">Séries leves calculadas pela carga de trabalho</div></div></button>
+        <button class="row" data-act="calc" data-mode="plates" data-w="${esc(num(ex.sets.find(s => !s.warm && !s.done)?.a) || num(placeholder(ex, Math.max(0, ex.sets.findIndex(s => !s.warm)), 'a')) || '')}"><div class="grow name">Calculadora de anilhas</div></button>` : ''}
         <button class="row" data-act="howTo" data-id="${ex.exId}"><div class="grow name">Ver execução (foto e vídeo)</div></button>
         <button class="row" data-act="exReplace" data-x="${x}"><div class="grow name">Substituir exercício</div></button>
         <a class="row" href="#/exercicio/${ex.exId}" data-act="closeSheet"><div class="grow name">Ver evolução</div></a>
@@ -1794,12 +2061,24 @@ const ACT = {
   wipeData: () => confirmSheet({
     title: 'Apagar tudo?', text: 'Fichas, histórico e exercícios personalizados serão apagados deste aparelho. Isso não pode ser desfeito.',
     ok: 'Apagar tudo', danger: true,
-    onOk: () => { S = blank(); save(); applyLook(); if (typeof aiSetKey === 'function') aiSetKey(''); toast('Dados apagados'); go('#/hoje'); }
-  })
+    onOk: () => { S = blank(); save(); localStorage.removeItem(PREV_KEY); applyLook(); if (typeof aiSetKey === 'function') aiSetKey(''); toast('Dados apagados'); go('#/hoje'); }
+  }),
+  undoImport: () => {
+    const p = prevCopy();
+    if (!p) return;
+    confirmSheet({
+      title: 'Desfazer a importação?', text: `Volta aos dados que estavam neste aparelho antes de importar (${dateShort(p.at)}): ${p.data.routines.length} fichas e ${p.data.sessions.length} treinos.`,
+      ok: 'Desfazer importação', danger: true,
+      onOk: () => { S = fromBackup(p.data); save(); localStorage.removeItem(PREV_KEY); applyLook(); toast('Dados anteriores restaurados'); go('#/hoje'); }
+    });
+  },
+  backupLater: () => { S.settings.backupSnooze = Date.now() + 3 * 864e5; save(); rerender(); }
 };
 
 if (typeof ASSIST_ACTIONS !== 'undefined') Object.assign(ACT, ASSIST_ACTIONS);
 if (typeof BODY_ACTIONS !== 'undefined') Object.assign(ACT, BODY_ACTIONS);
+if (typeof TOOLS_ACTIONS !== 'undefined') Object.assign(ACT, TOOLS_ACTIONS);
+if (typeof DIET_ACTIONS !== 'undefined') Object.assign(ACT, DIET_ACTIONS);
 
 function backToPicker() {
   renderPicker();
@@ -1825,6 +2104,7 @@ document.addEventListener('pointerdown', unlockAudio, { once: true });
 
 document.addEventListener('input', e => {
   const t = e.target;
+  if (typeof dietInput === 'function' && dietInput(t)) return;
   if (t.dataset.wf && S.active) {
     const ex = S.active.exercises[+t.dataset.x];
     ex.sets[+t.dataset.s][t.dataset.wf] = t.value.replace(/[^\d.,]/g, '');
@@ -1845,6 +2125,8 @@ document.addEventListener('input', e => {
   } else if (t.hasAttribute('data-ios-shortcut')) {
     S.settings.timerShortcut = t.value.trim(); save();
     const b = $('[data-ios-name]'); if (b) b.textContent = S.settings.timerShortcut || 'Descanso Ficha';
+  } else if (t.dataset.calc) {
+    if (typeof calcInput === 'function') calcInput(t);
   } else if (t.dataset.pf) {
     if (typeof onProfileInput === 'function') onProfileInput(t);
   } else if (t.id === 'pickq') {
@@ -1853,10 +2135,16 @@ document.addEventListener('input', e => {
 });
 document.addEventListener('change', e => {
   const t = e.target;
+  if (typeof dietChange === 'function' && dietChange(t)) return;
   if (t.dataset.setting === 'rest') { S.settings.rest = +t.value; save(); toast('Descanso padrão atualizado'); }
   else if (t.dataset.setting === 'sound') { S.settings.sound = t.checked; save(); if (t.checked) { unlockAudio(); beep(); } }
   else if (t.dataset.setting === 'keepAwake') { S.settings.keepAwake = t.checked; save(); syncWakeLock(); }
   else if (t.dataset.setting === 'iosTimer') { S.settings.iosTimer = t.checked; save(); if (t.checked) iosTimerHelp(); }
+  else if (t.dataset.setting === 'progression' || t.dataset.setting === 'rir') { S.settings[t.dataset.setting] = t.checked; save(); }
+  else if (t.hasAttribute('data-rir') && S.active) {
+    const s = S.active.exercises[+t.dataset.x].sets[+t.dataset.s];
+    s.rir = t.value; save();
+  }
   else if (t.hasAttribute('data-pactive')) {
     const pr = S.programs.find(x => x.id === location.hash.split('/')[2]);
     if (pr) { pr.active = t.checked; save(); rerender(); }
@@ -1888,6 +2176,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) tick
 applyLook();
 setInterval(tick, 500);
 route();
+protectStorage();
 
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {

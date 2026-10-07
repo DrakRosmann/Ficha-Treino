@@ -1,11 +1,11 @@
 # Ficha — registro de treinos (PWA)
 
-App web instalável para montar fichas de treino e registrar cargas, séries e evolução.
+App web instalável para montar fichas de treino, registrar cargas, séries e evolução, e acompanhar a alimentação.
 Funciona no iPhone pela Tela de Início, offline, sem App Store, sem Mac e sem conta de desenvolvedor.
 
 ## Funcionalidades
 
-- **Catálogo com ~900 exercícios** em 15 grupos (musculação, funcional/LPO, cardio, alongamento e mobilidade), com busca em português ou inglês e filtro por grupo; crie exercícios personalizados.
+- **Catálogo com ~900 exercícios** (em Fichas → Exercícios) em 15 grupos (musculação, funcional/LPO, cardio, alongamento e mobilidade), com busca em português ou inglês e filtro por grupo; crie exercícios personalizados.
 - **Mapa muscular**: cada exercício mostra um desenho do corpo (frente e costas) com os músculos principais em destaque e os secundários mais claros.
 - **Execução de cada exercício**: foto animada da posição inicial → final (873 exercícios), músculos trabalhados, atalho para vídeos no YouTube e opção de salvar o link do seu próprio vídeo (ex.: enviado pelo personal). Toque na miniatura em qualquer lista, ficha ou no treino.
 - **Programas e fichas**: um programa agrupa várias fichas (ex.: “Meu treino” → Push, Pull, Legs). Em cada ficha você escolhe dias da semana, séries, repetições, descanso e observações. Programas podem ser pausados; sem dias fixos, a tela Hoje sugere a próxima ficha na ordem (A → B → C…).
@@ -13,17 +13,31 @@ Funciona no iPhone pela Tela de Início, offline, sem App Store, sem Mac e sem c
 - **Assistente de treino**: você informa objetivo, experiência, dias por semana, tempo por treino, local, peso, altura, idade, grupos prioritários e restrições (joelho, lombar, ombro, punho, quadril, sem impacto, pressão alta) e recebe 3 opções de programa para escolher, com a explicação de cada uma.
   - **Sem IA** (padrão): regras de treino que escolhem a divisão, os exercícios seguros para as restrições, séries, repetições e descanso conforme o objetivo, e cabem no tempo informado. Funciona offline e é grátis.
   - **Com IA (Claude)**: entende observações em texto livre (ex.: “hérnia de disco”). Precisa de internet e de uma chave da API da Anthropic, salva só no aparelho (fica fora do backup). O uso é cobrado pela Anthropic na sua conta.
-- **Aparência**: tema automático, claro, escuro ou preto (OLED), 10 cores de destaque e três estilos:
+- **Aparência**: tema automático, claro, escuro ou preto (OLED), 10 cores de destaque e estilo visual. No **Automático** (padrão), o app identifica o aparelho e usa o estilo nativo: Liquid Glass no iPhone e iPad, Material You no Android e Clássico no computador e nos demais. Também dá para escolher um dos três:
   - **Clássico**: visual sólido, sem transparências.
   - **Liquid Glass**: no estilo do iOS 26, com barra de abas flutuante e painéis translúcidos.
   - **Material You**: no estilo do Android. As cores tonais (fundo, cartões, botões e contêineres) são geradas a partir da cor de destaque, como no Material 3. Tem cantos arredondados, botões em cápsula, barra de navegação com indicador, interruptores e campos do Material, efeito de toque e a fonte Google Sans Flex.
+- **Animações**: transições entre as telas (avançar, voltar e trocar de aba), indicador de aba que desliza, painéis com efeito de mola que fecham ao arrastar para baixo, ✓ animado ao concluir a série, gráficos e anéis que se desenham e confete no fim do treino. Tudo é desligado quando o iPhone está com “Reduzir movimento”.
 - **Hoje**: mostra a ficha do dia, a semana com dias planejados/treinados e estatísticas.
 - **Timer do iPhone**: opção de usar o Timer do relógio do iPhone no descanso. Ao terminar uma série, o app chama um atalho do app **Atalhos** (criado uma vez, com a ação “Iniciar Timer”), e o timer de verdade aparece na tela bloqueada e na Dynamic Island, com o alarme do iPhone. O passo a passo está em **Ajustes → Configurar o Timer do iPhone**. Também dá para manter a tela ligada durante o treino. (Um app da web não pode criar Live Activities próprias; isso só existe em apps nativos da App Store.)
-- **Modo treino**: marque cada série, veja o que fez no último treino, cargas pré-preenchidas, séries de aquecimento, cronômetro de descanso com aviso sonoro, adicionar/trocar/reordenar exercícios no meio do treino.
+- **Modo treino**: marque cada série, veja o que fez no último treino, cronômetro de descanso com aviso sonoro, adicionar/trocar/reordenar exercícios no meio do treino.
+  - **Progressão automática**: em cada exercício, o app sugere a carga e as repetições de hoje com base no último treino e na faixa da ficha (ex.: 8–12). É a dupla progressão: fez o topo da faixa em todas as séries → sobe a carga; ficou dentro da faixa → +1 rep; ficou abaixo da faixa duas vezes seguidas → reduz ~10%. Os campos já vêm com a sugestão.
+  - **RIR** (repetições na reserva) opcional em cada série; quando registrado, a progressão ajusta o passo.
+  - **Tipos de série** (toque no número da série): normal, aquecimento, drop set (sem descanso antes e com carga sugerida ~20% menor) e até a falha.
+  - **Aquecimento automático**: séries leves calculadas pela carga de trabalho (menu ⋯ do exercício).
+- **Dieta** (aba própria):
+  - **Metas** de calorias, proteína, carboidrato e gordura pelo objetivo (perder gordura, manter ou ganhar massa), ritmo semanal, nível de atividade e proteína por kg. O gasto parte da fórmula de Mifflin-St Jeor (ou Katch-McArdle, com o % de gordura da aba Corpo).
+  - **Gasto adaptativo**, como no MacroFactor: toda semana o app compara o que você registrou com a tendência do seu peso (regressão das pesagens das últimas 4 semanas) e recalcula o gasto real e as metas.
+  - **Registro por refeição** (café, almoço, lanche, jantar) com os 591 alimentos da **Tabela TACO** (Unicamp) e itens comuns de academia (whey, creatina, pasta de amendoim…), porções caseiras (colher de sopa de arroz, concha de feijão, unidade de ovo…), recentes, favoritos, “repetir de ontem”, alimentos próprios e navegação entre os dias.
+  - **IA (Claude)**: descreva a refeição em texto, tire foto do prato ou do rótulo, e a IA estima os alimentos, as gramas e os macros (você confere antes de salvar). Usa a mesma chave da Anthropic do assistente de treino.
+  - **Código de barras** pelo Open Food Facts (a câmera lê o código onde o navegador permite; no iPhone, digite os números ou use a foto do rótulo).
+  - **Água**, resumo dos últimos 7 dias e um card na tela Hoje.
 - **Corpo**: registre peso, composição corporal (gordura, massa muscular, água, gordura visceral, massa óssea, metabolismo basal) e medidas (pescoço, ombros, peito, braço, antebraço, cintura, abdômen, quadril, coxa, panturrilha). Mostra resumo com variação desde o início, gráficos por período (com meta de peso), massa magra, IMC, relação cintura/quadril, estimativa de gordura pelas medidas (método da Marinha dos EUA) e um mapa dos músculos treinados nos últimos 7 dias.
 - **Histórico**: mapa de frequência, volume, duração, recordes pessoais (PR) detectados automaticamente.
-- **Evolução por exercício**: gráfico de carga máxima, 1RM estimado ou volume.
-- **Backup**: exportar/importar um arquivo `.json` (vai para o app Arquivos/iCloud).
+  - **Séries por músculo**: quantas séries cada grupo muscular fez na semana (esta semana, semana passada ou média de 4 semanas), comparadas com a faixa de 10 a 20 séries usada nos estudos de hipertrofia. Músculos secundários contam meia série.
+- **Evolução por exercício**: gráfico de carga máxima, 1RM estimado ou volume, e a sugestão para o próximo treino.
+- **Calculadoras** (Ajustes → Treino, menu do exercício ou página do exercício): anilhas por lado (barra de 20, 15, 10 kg ou sem barra, com as anilhas que a sua academia tem), aquecimento e 1RM com a tabela de cargas por repetição.
+- **Backup e segurança dos dados**: exportar/importar um arquivo `.json` (vai para o app Arquivos/iCloud). O app pede ao navegador para não apagar os dados quando faltar espaço, lembra de fazer backup (na tela Hoje e no fim do treino, quando há 3 ou mais treinos sem backup há mais de uma semana) e guarda uma cópia antes de importar, para dar para desfazer.
 - **Fotos offline**: cada foto fica salva depois que aparece uma vez; em **Ajustes → Baixar fotos para usar offline** dá para baixar todas de uma vez (~19 MB, use no Wi-Fi).
 
 Tipos de registro: carga × reps, peso corporal (+kg opcional) × reps, tempo em segundos (prancha) e cardio (min / km).
@@ -64,7 +78,7 @@ No Chrome/Firefox use o modo de dispositivo móvel (F12 → ícone de celular) p
 
 ## Atualizar o app
 
-Edite os arquivos, aumente a versão em `sw.js` (`const CACHE = 'ficha-v9'`) e faça `git push`.
+Edite os arquivos, aumente a versão em `sw.js` (`const CACHE = 'ficha-v12'`) e faça `git push`.
 O app procura a versão nova sozinho sempre que é aberto (com internet) e recarrega uma vez quando encontra. Se quiser forçar, use **Ajustes → Procurar atualização**. Os dados não são apagados.
 
 ## Estrutura
@@ -77,6 +91,9 @@ O app procura a versão nova sozinho sempre que é aberto (com internet) e recar
 | `exercises.js` | Catálogo de exercícios (nome, grupo, equipamento, tipo, foto, músculos) — edite à vontade |
 | `templates.js` | Modelos de programas prontos — edite ou crie os seus |
 | `body.js` | Aba Corpo (medidas, composição corporal, gráficos) e mapa muscular |
+| `tools.js` | Progressão automática, séries por músculo e calculadoras (anilhas, aquecimento, 1RM) |
+| `nutrition.js` | Aba Dieta: registro, metas, gasto adaptativo, água, IA e código de barras |
+| `foods.js` | Banco de alimentos (TACO + itens comuns de academia), valores por 100 g |
 | `assistant.js` | Assistente de treino: regras de montagem (padrões de movimento, restrições, séries por objetivo) e integração com o Claude |
 | `vendor/anthropic-sdk.mjs` | SDK oficial da Anthropic empacotado para o navegador (carregado só quando a IA é usada) |
 | `fonts/` | Fonte Google Sans Flex do estilo Material You (só o alfabeto latino) |
@@ -87,6 +104,8 @@ O app procura a versão nova sozinho sempre que é aberto (com internet) e recar
 Sem frameworks nem build: é HTML, CSS e JavaScript puro.
 
 ## Créditos
+
+Alimentos: Tabela Brasileira de Composição de Alimentos (TACO), 4ª edição revisada e ampliada, NEPA/UNICAMP, 2011 (reprodução permitida citando a fonte), organizada pelo projeto [taco-api](https://github.com/raulfdm/taco-api) (MIT). Produtos por código de barras: [Open Food Facts](https://world.openfoodfacts.org) (base aberta, ODbL).
 
 A fonte do estilo Material You é a [Google Sans Flex](https://github.com/googlefonts/googlesans-flex) (SIL Open Font License 1.1; licença em `fonts/OFL.txt`).
 
