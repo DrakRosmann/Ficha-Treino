@@ -25,15 +25,24 @@ Funciona no iPhone pela Tela de Início, offline, sem App Store, sem Mac e sem c
   - **RIR** (repetições na reserva) opcional em cada série; quando registrado, a progressão ajusta o passo.
   - **Tipos de série** (toque no número da série): normal, aquecimento, drop set (sem descanso antes e com carga sugerida ~20% menor) e até a falha.
   - **Aquecimento automático**: séries leves calculadas pela carga de trabalho (menu ⋯ do exercício).
+  - **Superséries e circuitos**: na ficha, toque em “Juntar em supersérie” entre dois exercícios (3 ou mais juntos viram circuito). No treino não há descanso entre os exercícios do grupo; o descanso vem no fim da rodada e o app leva você de um exercício para o outro.
 - **Dieta** (aba própria):
   - **Metas** de calorias, proteína, carboidrato e gordura pelo objetivo (perder gordura, manter ou ganhar massa), ritmo semanal, nível de atividade e proteína por kg. O gasto parte da fórmula de Mifflin-St Jeor (ou Katch-McArdle, com o % de gordura da aba Corpo).
   - **Gasto adaptativo**, como no MacroFactor: toda semana o app compara o que você registrou com a tendência do seu peso (regressão das pesagens das últimas 4 semanas) e recalcula o gasto real e as metas.
   - **Registro por refeição** (café, almoço, lanche, jantar) com os 591 alimentos da **Tabela TACO** (Unicamp) e itens comuns de academia (whey, creatina, pasta de amendoim…), porções caseiras (colher de sopa de arroz, concha de feijão, unidade de ovo…), recentes, favoritos, “repetir de ontem”, alimentos próprios e navegação entre os dias.
   - **IA (Claude)**: descreva a refeição em texto, tire foto do prato ou do rótulo, e a IA estima os alimentos, as gramas e os macros (você confere antes de salvar). Usa a mesma chave da Anthropic do assistente de treino.
   - **Código de barras** pelo Open Food Facts (a câmera lê o código onde o navegador permite; no iPhone, digite os números ou use a foto do rótulo).
+  - **Refeições prontas**: salve uma refeição que se repete (ex.: “café de sempre”) e adicione tudo com um toque.
+  - **Micronutrientes** da TACO: fibras, sódio (com o limite de 2.000 mg), potássio, cálcio, ferro, magnésio e vitamina C, comparados com as referências diárias para adultos.
   - **Água**, resumo dos últimos 7 dias e um card na tela Hoje.
 - **Corpo**: registre peso, composição corporal (gordura, massa muscular, água, gordura visceral, massa óssea, metabolismo basal) e medidas (pescoço, ombros, peito, braço, antebraço, cintura, abdômen, quadril, coxa, panturrilha). Mostra resumo com variação desde o início, gráficos por período (com meta de peso), massa magra, IMC, relação cintura/quadril, estimativa de gordura pelas medidas (método da Marinha dos EUA) e um mapa dos músculos treinados nos últimos 7 dias.
 - **Fotos do progresso** (aba Corpo): fotos de frente, de lado e de costas por data, tiradas pela **câmera com guia** (mostra a foto anterior transparente por cima para você se posicionar igual, com grade e timer de 3 ou 10 s) ou escolhidas da galeria. Galeria por pose, **comparação antes/depois** deslizando ou lado a lado, com a variação de peso, gordura, cintura e braço entre as datas. As fotos ficam só no aparelho (IndexedDB); o backup pergunta se deve incluí-las.
+- **Treinador IA (Claude)** (tela Hoje): **relatório da semana** que lê treinos, cargas, evolução do 1RM, séries por músculo, dieta, gasto e tendência do peso, e diz o que foi bem, o que precisa de atenção e as metas da próxima semana; e uma **conversa** para perguntar sobre o seu treino e a sua dieta com base nos seus registros. Usa a mesma chave da Anthropic.
+- **Compartilhar nos Stories**: o resumo do treino vira uma imagem 1080 × 1920 (cartão, sobre uma foto sua ou adesivo com fundo transparente), com duração, séries, volume, melhor série de cada exercício, recordes e conquistas.
+- **Conquistas**: 28 medalhas (bronze, prata, ouro e especiais) por número de treinos, toneladas levantadas, semanas seguidas, semana perfeita, recordes, força relativa ao peso (supino com o próprio peso, agachamento 1,5×, terra 2×), dieta, água, pesagens e fotos. Aparecem no fim do treino e no Histórico, com o progresso das que faltam, e também podem ser compartilhadas.
+- **Nuvem e lembretes** (opcional, Ajustes → Nuvem e lembretes), com um servidor grátis seu na Cloudflare ([passo a passo](server/README.md)):
+  - **Sincronização** entre iPhone, iPad e outros aparelhos com **criptografia de ponta a ponta** (o servidor não consegue ler). Um código de 20 caracteres liga os aparelhos; mudanças feitas em aparelhos diferentes são juntadas campo a campo.
+  - **Lembretes por notificação** (iPhone com iOS 16.4+, app instalado na Tela de Início): treino do dia (pelos dias das fichas), água, refeições, pesagem semanal e backup, no fuso do aparelho. O que você já fez no dia não é lembrado.
 - **Histórico**: mapa de frequência, volume, duração, recordes pessoais (PR) detectados automaticamente.
   - **Séries por músculo**: quantas séries cada grupo muscular fez na semana (esta semana, semana passada ou média de 4 semanas), comparadas com a faixa de 10 a 20 séries usada nos estudos de hipertrofia. Músculos secundários contam meia série.
 - **Evolução por exercício**: gráfico de carga máxima, 1RM estimado ou volume, e a sugestão para o próximo treino.
@@ -65,7 +74,7 @@ Tipos de registro: carga × reps, peso corporal (+kg opcional) × reps, tempo em
 2. Toque em **Compartilhar** → **Adicionar à Tela de Início** → **Adicionar**.
 3. Abra pelo ícone: ele roda em tela cheia e funciona sem internet.
 
-> Os dados ficam salvos só no iPhone, dentro do app instalado. Se apagar o ícone da Tela de Início, os dados vão junto — use **Ajustes → Exportar backup** de vez em quando.
+> Os dados ficam salvos no iPhone, dentro do app instalado. Se apagar o ícone da Tela de Início, os dados vão junto — use **Ajustes → Exportar backup** de vez em quando, ou ative a **nuvem**.
 
 ## Testar no computador
 
@@ -79,7 +88,7 @@ No Chrome/Firefox use o modo de dispositivo móvel (F12 → ícone de celular) p
 
 ## Atualizar o app
 
-Edite os arquivos, aumente a versão em `sw.js` (`const CACHE = 'ficha-v14'`) e faça `git push`.
+Edite os arquivos, aumente a versão em `sw.js` (`const CACHE = 'ficha-v15'`) e faça `git push`.
 O app procura a versão nova sozinho sempre que é aberto (com internet) e recarrega uma vez quando encontra. Se quiser forçar, use **Ajustes → Procurar atualização**. Os dados não são apagados.
 
 ## Estrutura
@@ -95,12 +104,16 @@ O app procura a versão nova sozinho sempre que é aberto (com internet) e recar
 | `tools.js` | Progressão automática, séries por músculo e calculadoras (anilhas, aquecimento, 1RM) |
 | `nutrition.js` | Aba Dieta: registro, metas, gasto adaptativo, água, IA e código de barras |
 | `photos.js` | Fotos do progresso: armazenamento no aparelho, câmera com guia, galeria e comparação |
-| `foods.js` | Banco de alimentos (TACO + itens comuns de academia), valores por 100 g |
+| `foods.js` | Banco de alimentos (TACO com micronutrientes + itens comuns de academia), valores por 100 g |
+| `share.js` | Imagem do treino para os Stories e conquistas |
+| `coach.js` | Treinador IA: relatório da semana e conversa |
+| `cloud.js` | Sincronização criptografada entre aparelhos e lembretes por notificação |
+| `server/` | Servidor opcional (Cloudflare Worker + KV) da nuvem e dos lembretes, com o passo a passo |
 | `assistant.js` | Assistente de treino: regras de montagem (padrões de movimento, restrições, séries por objetivo) e integração com o Claude |
 | `vendor/anthropic-sdk.mjs` | SDK oficial da Anthropic empacotado para o navegador (carregado só quando a IA é usada) |
 | `fonts/` | Fonte Google Sans Flex do estilo Material You (só o alfabeto latino) |
 | `img/ex/`, `img/thumb/` | Fotos da execução (início e fim lado a lado) e miniaturas, em WebP |
-| `sw.js` | Service worker (cache offline) |
+| `sw.js` | Service worker (cache offline e notificações) |
 | `manifest.webmanifest`, `icons/` | Instalação e ícones |
 
 Sem frameworks nem build: é HTML, CSS e JavaScript puro.

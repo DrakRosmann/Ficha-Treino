@@ -70,6 +70,8 @@ const I = {
   x: '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>',
   copy: '<svg viewBox="0 0 24 24"><rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M15.5 8.5V6a1.5 1.5 0 0 0-1.5-1.5H6A1.5 1.5 0 0 0 4.5 6v8A1.5 1.5 0 0 0 6 15.5h2.5"/></svg>',
   edit: '<svg viewBox="0 0 24 24"><path d="M4.5 19.5h4l10-10-4-4-10 10z"/><path d="M13 7l4 4"/></svg>',
+  share: '<svg viewBox="0 0 24 24"><path d="M12 3.5v11M8 7.5l4-4 4 4"/><path d="M8.5 10.5H7a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6a2 2 0 0 0-2-2h-1.5"/></svg>',
+  link: '<svg viewBox="0 0 24 24"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1"/></svg>',
   camera: '<svg viewBox="0 0 24 24"><path d="M4 8.5a2 2 0 0 1 2-2h2l1.5-2h5L16 6.5h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.5"/></svg>',
   barcode: '<svg viewBox="0 0 24 24"><path d="M4 6v12M7 6v12M10.5 6v12M13 6v12M16.5 6v12M20 6v12"/></svg>',
   food: '<svg viewBox="0 0 24 24"><path d="M7 3v18M4.5 3v5a2.5 2.5 0 0 0 5 0V3M17 21V3c-2 1.2-3.5 3.6-3.5 6.5V13H17"/></svg>',
@@ -128,6 +130,8 @@ let S = load();
 function save() {
   try { localStorage.setItem(KEY, JSON.stringify(S)); }
   catch (e) { toast('Não foi possível salvar os dados'); }
+  if (typeof achSoon === 'function') achSoon();
+  if (typeof cloudSoon === 'function') cloudSoon();
 }
 
 /* ================= Exercícios ================= */
@@ -612,6 +616,9 @@ const routes = [
   [/^#\/exercicio\/([\w-]+)$/, viewExercicio, 'fichas'],
   [/^#\/historico$/, viewHistorico, 'historico'],
   [/^#\/sessao\/([\w-]+)$/, viewSessao, 'historico'],
+  [/^#\/treinador$/, () => typeof viewTreinador === 'function' ? viewTreinador() : viewUpdating(), 'hoje'],
+  [/^#\/nuvem$/, () => typeof viewNuvem === 'function' ? viewNuvem() : viewUpdating(), 'ajustes'],
+  [/^#\/conquistas$/, () => typeof viewConquistas === 'function' ? viewConquistas() : viewUpdating(), 'historico'],
   [/^#\/treino$/, viewTreino, null],
   [/^#\/ajustes$/, viewAjustes, 'ajustes']
 ];
@@ -780,6 +787,7 @@ function viewHoje() {
   }
 
   if (typeof dietTodayCard === 'function') html += dietTodayCard();
+  if (typeof coachTodayCard === 'function') html += coachTodayCard();
   if (!S.active && backupDue()) {
     const n = unbackedSessions();
     html += `<div class="card backup-card"><div class="bk-row"><span class="bk-ic">${I.download}</span>
@@ -917,9 +925,11 @@ function viewFicha(id) {
   const items = r.items.map((it, i) => {
     const ex = getEx(it.exId), kind = exKind(it.exId);
     const repsLabel = kind === 's' ? 'Segundos' : kind === 'c' ? 'Minutos' : 'Reps';
-    return `<div class="card">
+    const ssi = ssInfo(r.items, i), linked = it.ss && r.items[i + 1] && r.items[i + 1].ss === it.ss;
+    const link = i < r.items.length - 1 ? `<button class="ss-link ${linked ? 'on' : ''}" data-act="itemSS" data-i="${i}" aria-label="${linked ? 'Separar' : 'Juntar em supersérie'}">${I.link}<span>${linked ? 'Em supersérie · separar' : 'Juntar em supersérie'}</span></button>` : '';
+    return `${ssi && ssi.pos === 1 ? `<div class="ss-head">${ssi.name} ${ssi.letter} · sem descanso entre os exercícios; o descanso do último vale para a rodada</div>` : ''}<div class="card ${ssi ? `in-ss ${ssi.pos === 1 ? 'ss-first' : ''} ${ssi.pos === ssi.size ? 'ss-last' : ''}` : ''}">
       <div class="item-head"><button class="thumb-btn" data-act="howTo" data-id="${it.exId}" aria-label="Ver execução">${thumb(ex)}</button>
-        <div class="grow"><div class="name">${i + 1}. ${esc(exName(it.exId))}</div>
+        <div class="grow">${ssBadge(ssi)}<div class="name">${i + 1}. ${esc(exName(it.exId))}</div>
         <div class="small muted">${esc(ex ? `${ex.group} · ${ex.equip}` : '')}</div></div>
         <div class="item-tools">
           <button class="icon-btn" data-act="itemUp" data-i="${i}" aria-label="Subir" ${i === 0 ? 'disabled style="opacity:.3"' : ''}>${I.up}</button>
@@ -932,7 +942,7 @@ function viewFicha(id) {
         <label><span>Descanso</span><select class="input num" data-rf="rest" data-i="${i}">${REST_OPTIONS.map(s => `<option value="${s}" ${s === +it.rest ? 'selected' : ''}>${s ? fmtRest(s) : '—'}</option>`).join('')}</select></label>
       </div>
       <input class="input note-input" type="text" placeholder="Observação (ex.: banco no 3, pegada aberta)" value="${esc(it.note)}" data-rf="note" data-i="${i}">
-    </div>`;
+    </div>${link}`;
   }).join('');
 
   const progOpts = `<option value="">Nenhum (ficha avulsa)</option>` +
@@ -1104,12 +1114,49 @@ function chartSVG(points, unit, opts = {}) {
     </svg>`;
 }
 
+/* ================= Superséries e circuitos =================
+   Exercícios seguidos com o mesmo `ss` formam um grupo: 2 = supersérie, 3 ou mais = circuito.
+   No treino, o descanso só vem depois do último exercício do grupo. */
+function ssGroups(list) {
+  const out = [];
+  for (let i = 0, n = 0; i < list.length;) {
+    let j = i;
+    if (list[i].ss) while (j + 1 < list.length && list[j + 1].ss === list[i].ss) j++;
+    if (j > i) out.push({ start: i, end: j, letter: String.fromCharCode(65 + n++) });
+    i = j + 1;
+  }
+  return out;
+}
+function ssInfo(list, i) {
+  const g = ssGroups(list).find(g => i >= g.start && i <= g.end);
+  return g ? { ...g, pos: i - g.start + 1, size: g.end - g.start + 1, name: g.end - g.start + 1 > 2 ? 'Circuito' : 'Supersérie' } : null;
+}
+// Remove marcas soltas (grupo de um só)
+function ssClean(list) {
+  list.forEach((it, k) => { if (it.ss && list[k - 1]?.ss !== it.ss && list[k + 1]?.ss !== it.ss) delete it.ss; });
+}
+// Junta o item i com o próximo (e o grupo dele, se houver) ou separa os dois
+function ssToggle(list, i) {
+  const a = list[i], b = list[i + 1];
+  if (!a || !b) return;
+  if (a.ss && a.ss === b.ss) {
+    const nid = 's' + uid().slice(-6), g = a.ss;
+    for (let k = i + 1; k < list.length && list[k].ss === g; k++) list[k].ss = nid;
+  } else {
+    const id = a.ss || (a.ss = 's' + uid().slice(-6)), old = b.ss;
+    b.ss = id;
+    for (let k = i + 2; old && k < list.length && list[k].ss === old; k++) list[k].ss = id;
+  }
+  ssClean(list);
+}
+function ssBadge(info) { return info ? `<span class="ss-tag">${info.letter}${info.pos} · ${info.name}</span>` : ''; }
+
 /* ================= Treino ativo ================= */
-function makeActiveExercise(exId, sets, reps = '', rest = S.settings.rest, note = '') {
+function makeActiveExercise(exId, sets, reps = '', rest = S.settings.rest, note = '', ss = '') {
   const ex = getEx(exId);
   return {
     uid: uid(), exId, name: ex ? ex.name : 'Exercício', kind: ex ? ex.kind : 'w',
-    target: reps, rest: +rest, note,
+    target: reps, rest: +rest, note, ...(ss ? { ss } : {}),
     sets: Array.from({ length: Math.max(1, sets) }, () => ({ a: '', b: '', done: false, warm: false }))
   };
 }
@@ -1126,7 +1173,7 @@ function startWorkout(name, routineId, exercises) {
   save(); go('#/treino');
 }
 function startFromRoutine(r) {
-  startWorkout(r.name, r.id, r.items.map(it => makeActiveExercise(it.exId, it.sets, it.reps, it.rest, it.note)));
+  startWorkout(r.name, r.id, r.items.map(it => makeActiveExercise(it.exId, it.sets, it.reps, it.rest, it.note, it.ss)));
 }
 
 // Valor sugerido para um campo vazio: a progressão automática, senão o último treino, senão a série anterior
@@ -1203,9 +1250,11 @@ function viewTreino() {
     }).join('');
     const sg = typeof suggestionFor === 'function' && !allDone ? suggestionFor(ex) : null;
     const targetTxt = [ex.sets.filter(s => !s.warm).length + ' × ' + (ex.target || '—') + (ex.kind === 's' ? 's' : ex.kind === 'c' ? ' min' : ''), `descanso ${fmtRest(ex.rest)}`].join(' · ');
-    html += `<div class="ex-card ${allDone ? 'complete' : ''} ${allDone && pop && pop.split('-')[0] === String(x) ? 'just-complete' : ''}">
+    const ssi = ssInfo(a.exercises, x);
+    html += `<div class="ex-card ${allDone ? 'complete' : ''} ${allDone && pop && pop.split('-')[0] === String(x) ? 'just-complete' : ''} ${ssi ? `in-ss ${ssi.pos === 1 ? 'ss-first' : ''} ${ssi.pos === ssi.size ? 'ss-last' : ''}` : ''}">
+      ${ssi && ssi.pos === 1 ? `<div class="ss-head">${ssi.name} ${ssi.letter} · faça uma série de cada, sem descanso, e descanse no fim da rodada</div>` : ''}
       <div class="ex-title"><button class="thumb-btn" data-act="howTo" data-id="${ex.exId}" aria-label="Ver execução">${thumb(getEx(ex.exId))}</button>
-        <div class="grow"><a class="name" href="#/exercicio/${ex.exId}">${esc(ex.name)}</a><div class="target num">${targetTxt}</div></div>
+        <div class="grow">${ssBadge(ssi)}<a class="name" href="#/exercicio/${ex.exId}">${esc(ex.name)}</a><div class="target num">${targetTxt}</div></div>
         <button class="icon-btn" data-act="exMenu" data-x="${x}" aria-label="Opções do exercício" style="margin:-8px -6px 0 0">${I.more}</button></div>
       ${ex.note ? `<div class="ex-note">${esc(ex.note)}</div>` : ''}
       ${sg ? suggestionHTML(sg) : ''}
@@ -1314,7 +1363,7 @@ function commitWorkout(updateRoutine) {
   const sess = {
     id: a.id, name: a.name, routineId: a.routineId, start: a.start, end: Date.now(), notes: a.notes.trim(),
     exercises: a.exercises.map(e => ({
-      exId: e.exId, name: e.name, kind: e.kind,
+      exId: e.exId, name: e.name, kind: e.kind, ...(e.ss ? { ss: e.ss } : {}),
       sets: e.sets.filter(s => s.done).map(s => {
         const o = { a: num(s.a), b: e.kind === 's' ? null : num(s.b) };
         if (s.warm) o.warm = true;
@@ -1340,12 +1389,14 @@ function commitWorkout(updateRoutine) {
   if (updateRoutine) {
     updateRoutine.items = a.exercises.filter(e => e.sets.some(s => s.done)).map(e => {
       const old = updateRoutine.items.find(it => it.exId === e.exId);
-      return { id: old ? old.id : uid(), exId: e.exId, sets: e.sets.filter(s => !s.warm).length || 1, reps: e.target || (old && old.reps) || '', rest: e.rest, note: e.note || '' };
+      return { id: old ? old.id : uid(), exId: e.exId, sets: e.sets.filter(s => !s.warm).length || 1, reps: e.target || (old && old.reps) || '', rest: e.rest, note: e.note || '', ...(e.ss ? { ss: e.ss } : {}) };
     });
+    ssClean(updateRoutine.items);
   }
   S.sessions.unshift(sess);
   S.sessions.sort((x, y) => y.start - x.start);
   S.active = null;
+  if (typeof achCheck === 'function') { const n = achCheck(); if (n.length) sess.ach = n; }
   save();
   afterRender = () => showSummary(sess);
   go(`#/sessao/${sess.id}`);
@@ -1393,7 +1444,8 @@ function showSummary(sess) {
       <div class="stat"><b class="num" data-count="${sessSetCount(sess)}">${sessSetCount(sess)}</b><span>séries</span></div>
       <div class="stat"><b class="num" ${vol ? `data-count="${Math.round(vol)}" data-fmt="int"` : ''}>${vol ? fmtInt(vol) : '—'}</b><span>kg de volume</span></div></div>
     ${prs.length ? `<h2 class="section">Recordes pessoais 🎉</h2><div class="list">${prs.map(p => `<div class="kv"><span>${esc(p.name)} · ${p.label}</span><b style="color:var(--gold)">${fmt(p.value)} ${p.unit}</b></div>`).join('')}</div>` : ''}
-    </div><div class="sheet-foot stack">${backupDue() ? `<button class="btn block" data-act="exportData">${I.download}Salvar backup · ${unbackedSessions()} treinos sem backup</button>` : ''}
+    ${(sess.ach || []).length && typeof achBadgesHTML === 'function' ? `<h2 class="section">Conquista${sess.ach.length > 1 ? 's' : ''} desbloqueada${sess.ach.length > 1 ? 's' : ''}</h2>${achBadgesHTML(sess.ach)}` : ''}
+    </div><div class="sheet-foot stack">${typeof openShare === 'function' ? `<button class="btn block" data-act="shareSession" data-id="${sess.id}">${I.share}Compartilhar nos Stories</button>` : ''}${backupDue() ? `<button class="btn block" data-act="exportData">${I.download}Salvar backup · ${unbackedSessions()} treinos sem backup</button>` : ''}
       <button class="btn primary block" data-act="closeSheet">Fechar</button></div>`);
   countUp($('#sheet'));
   setTimeout(() => confetti(prs.length ? 120 : 70), 150);
@@ -1427,6 +1479,7 @@ function viewHistorico() {
       <div class="stat"><b class="num">${S.sessions.length}</b><span>treinos no total</span></div>
       <div class="stat"><b class="num">${weekVol >= 10000 ? fmt(weekVol / 1000) + 't' : fmtInt(weekVol)}</b><span>kg nesta semana</span></div>
       <div class="stat"><b class="num">${fmtDur(avgDur)}</b><span>duração média</span></div></div>`;
+  if (typeof achHistHTML === 'function') html += achHistHTML();
   if (typeof volumeHTML === 'function') html += volumeHTML();
 
   let month = '';
@@ -1456,14 +1509,16 @@ function viewSessao(id) {
   if ((s.prs || []).length) {
     html += `<h2 class="section">Recordes pessoais</h2><div class="list">${s.prs.map(p => `<div class="kv"><span>${esc(p.name)} · ${p.label}</span><b style="color:var(--gold)">${fmt(p.value)} ${p.unit}</b></div>`).join('')}</div>`;
   }
-  html += `<h2 class="section">Exercícios</h2><div class="card" style="padding:4px 16px">` + s.exercises.map(e => {
+  html += `<h2 class="section">Exercícios</h2><div class="card" style="padding:4px 16px">` + s.exercises.map((e, ei) => {
     let wn = 0;
     return `<a class="sess-ex" href="#/exercicio/${e.exId}" style="display:block">
-      <div class="name" style="display:flex;justify-content:space-between;gap:8px"><span>${esc(exName(e.exId, e.name))}${prKeys.has(e.exId) ? ' <span class="badge gold">PR</span>' : ''}</span>${I.chev}</div>
+      <div class="name" style="display:flex;justify-content:space-between;gap:8px"><span>${ssBadge(ssInfo(s.exercises, ei)).replace('class="ss-tag"', 'class="ss-tag" style="margin-right:6px"')}${esc(exName(e.exId, e.name))}${prKeys.has(e.exId) ? ' <span class="badge gold">PR</span>' : ''}</span>${I.chev}</div>
       <div class="set-pills">${e.sets.map(x => setPill(e.kind, x, setMark(x) || ++wn)).join('')}</div></a>`;
   }).join('') + '</div>';
   if (s.notes) html += `<h2 class="section">Anotações</h2><div class="card" style="white-space:pre-wrap">${esc(s.notes)}</div>`;
-  html += `<div class="stack" style="margin-top:18px"><button class="btn primary block" data-act="repeatSession" data-id="${id}">${I.play}Repetir este treino</button></div>`;
+  if ((s.ach || []).length && typeof achBadgesHTML === 'function') html += `<h2 class="section">Conquistas deste treino</h2>${achBadgesHTML(s.ach)}`;
+  html += `<div class="stack" style="margin-top:18px"><button class="btn primary block" data-act="repeatSession" data-id="${id}">${I.play}Repetir este treino</button>
+    ${typeof openShare === 'function' ? `<button class="btn block" data-act="shareSession" data-id="${id}">${I.share}Compartilhar como imagem</button>` : ''}</div>`;
   return html;
 }
 
@@ -1527,6 +1582,7 @@ function viewAjustes() {
 
     <h2 class="section">Seus dados</h2>
     <div class="list">
+      ${typeof viewNuvem === 'function' ? `<a class="row" href="#/nuvem"><div class="grow"><div class="name">Nuvem e lembretes</div><div class="sub">${cloudOn() ? 'Sincronizando entre aparelhos' : 'Sincronize entre aparelhos e receba lembretes'}${pushCfg().on ? ' · lembretes ativos' : ''}</div></div>${I.chev}</a>` : ''}
       <button class="row" data-act="exportData"><div class="grow"><div class="name">Exportar backup</div><div class="sub">${backupLabel()}</div></div>${I.chev}</button>
       <label class="row" style="cursor:pointer"><div class="grow"><div class="name">Importar backup</div><div class="sub">Substitui os dados atuais pelos do arquivo</div></div>${I.chev}
         <input type="file" accept="application/json,.json" id="importFile" hidden></label>
@@ -1535,7 +1591,7 @@ function viewAjustes() {
       <a class="row" href="#/modelos"><div class="grow"><div class="name">Modelos de treino prontos</div><div class="sub">PPL, Upper/Lower, ABC, ABCDE, em casa e mais</div></div>${I.chev}</a>
       <button class="row" data-act="wipeData"><div class="grow"><div class="name" style="color:var(--danger)">Apagar todos os dados</div></div></button>
     </div>
-    <p class="small muted" style="margin:10px 4px 0">${S.programs.length} programas · ${S.routines.length} fichas · ${S.sessions.length} treinos · ${(S.body || []).length} registros de medidas · ${(S.photos || []).length} fotos do progresso · ${S.custom.length} exercícios personalizados. Tudo fica salvo só neste aparelho. Exporte um backup e guarde no iCloud Drive (app Arquivos) para não perder nada se trocar ou perder o celular.</p>
+    <p class="small muted" style="margin:10px 4px 0">${S.programs.length} programas · ${S.routines.length} fichas · ${S.sessions.length} treinos · ${(S.body || []).length} registros de medidas · ${(S.photos || []).length} fotos do progresso · ${S.custom.length} exercícios personalizados. ${typeof cloudOn === 'function' && cloudOn() ? 'Os dados ficam neste aparelho e numa cópia criptografada no seu servidor. O backup em arquivo continua sendo uma boa ideia.' : 'Tudo fica salvo só neste aparelho. Exporte um backup e guarde no iCloud Drive (app Arquivos), ou ative a nuvem, para não perder nada se trocar ou perder o celular.'}</p>
 
     ${standalone ? '' : `<h2 class="section">Instalar no iPhone</h2>
     <div class="card small" style="line-height:1.55">
@@ -1545,7 +1601,7 @@ function viewAjustes() {
       <span class="muted">O app abre em tela cheia, funciona offline e mantém seus dados.</span></div>`}
 
     <div style="text-align:center;margin-top:22px"><button class="link-btn" data-act="checkUpdate">Procurar atualização</button></div>
-    <p class="small muted" style="text-align:center;margin-top:6px">Ficha · versão 2.2<br>
+    <p class="small muted" style="text-align:center;margin-top:6px">Ficha · versão 2.3<br>
       Fotos e músculos dos exercícios: <a href="https://github.com/yuhonas/free-exercise-db" target="_blank" rel="noopener" style="text-decoration:underline">free-exercise-db</a> (domínio público)<br>
       Desenho do mapa muscular: <a href="https://github.com/GV79/react-body-highlighter" target="_blank" rel="noopener" style="text-decoration:underline">react-body-highlighter</a> (MIT)<br>
       Alimentos: TACO, 4ª ed. (NEPA/UNICAMP) e <a href="https://world.openfoodfacts.org" target="_blank" rel="noopener" style="text-decoration:underline">Open Food Facts</a> (ODbL)</p>`;
@@ -1582,7 +1638,7 @@ function prevCopy() {
 function fromBackup(d) {
   const b = blank();
   migrate(d);
-  return { ...b, settings: { ...b.settings, ...(d.settings || {}) }, custom: d.custom || [], videos: d.videos || {}, profile: d.profile || null, body: d.body || [], bodyGoal: d.bodyGoal || {}, food: d.food || b.food, photos: d.photos || [], programs: d.programs || [], routines: d.routines, sessions: d.sessions.sort((x, y) => y.start - x.start), active: d.active || null };
+  return { ...b, settings: { ...b.settings, ...(d.settings || {}) }, custom: d.custom || [], videos: d.videos || {}, profile: d.profile || null, body: d.body || [], bodyGoal: d.bodyGoal || {}, food: d.food || b.food, photos: d.photos || [], programs: d.programs || [], routines: d.routines, sessions: d.sessions.sort((x, y) => y.start - x.start), active: d.active || null, ...(d.ach ? { ach: d.ach } : {}), ...(d.coach ? { coach: d.coach } : {}) };
 }
 
 let exportPhotos = null; // fotos do progresso já lidas e convertidas (o compartilhar precisa sair direto do toque)
@@ -1805,9 +1861,10 @@ const ACT = {
     r.days = r.days.includes(d) ? r.days.filter(x => x !== d) : [...r.days, d];
     save(); rerender();
   },
-  itemUp: el => { moveItem(curRoutine().items, +el.dataset.i, -1); save(); rerender(); },
-  itemDown: el => { moveItem(curRoutine().items, +el.dataset.i, 1); save(); rerender(); },
-  itemRemove: el => { curRoutine().items.splice(+el.dataset.i, 1); save(); rerender(); },
+  itemUp: el => { moveItem(curRoutine().items, +el.dataset.i, -1); ssClean(curRoutine().items); save(); rerender(); },
+  itemDown: el => { moveItem(curRoutine().items, +el.dataset.i, 1); ssClean(curRoutine().items); save(); rerender(); },
+  itemRemove: el => { curRoutine().items.splice(+el.dataset.i, 1); ssClean(curRoutine().items); save(); rerender(); },
+  itemSS: el => { ssToggle(curRoutine().items, +el.dataset.i); save(); rerender(); },
   addToRoutine: () => {
     const r = curRoutine();
     openPicker({
@@ -1910,7 +1967,22 @@ const ACT = {
     s.done = true;
     justDone = `${el.dataset.x}-${i}`;
     unlockAudio();
-    const next = ex.sets[i + 1];
+    const next = ex.sets[i + 1], x = +el.dataset.x, list = S.active.exercises, ssi = ssInfo(list, x);
+    const pending = k => list[k].sets.some(st => !st.done);
+    if (ssi && !(next && next.t === 'drop' && !next.done)) {
+      // Supersérie/circuito: sem descanso até o último exercício da rodada; depois volta para o primeiro com séries
+      let k = x + 1;
+      while (k <= ssi.end && !pending(k)) k++;
+      const goTo = k <= ssi.end ? k : [...Array(ssi.size).keys()].map(j => ssi.start + j).find(pending);
+      if (k > ssi.end) startRest(ex.rest);
+      save(); rerender();
+      if (goTo != null) {
+        const card = document.querySelectorAll('.ex-card')[goTo];
+        if (card) card.scrollIntoView({ behavior: reduceMotion() ? 'auto' : 'smooth', block: 'center' });
+        toast(k <= ssi.end ? `Agora: ${list[goTo].name}` : `Descanse · depois ${list[goTo].name}`);
+      }
+      return;
+    }
     if (!(next && next.t === 'drop' && !next.done)) startRest(ex.rest); // drop set vem sem descanso
     save(); rerender();
   },
@@ -1968,6 +2040,7 @@ const ACT = {
       <h2 class="section" style="margin-top:4px">Descanso entre séries</h2>
       <div class="chips" style="flex-wrap:wrap;margin:0 0 6px;padding:0">${REST_OPTIONS.map(s => `<button class="chip ${s === ex.rest ? 'on' : ''}" data-act="exRest" data-x="${x}" data-v="${s}">${s ? fmtRest(s) : 'Nenhum'}</button>`).join('')}</div>
       <div class="list" style="margin-top:16px">
+        ${x < S.active.exercises.length - 1 ? `<button class="row" data-act="exSS" data-x="${x}"><div class="grow"><div class="name">${ex.ss && S.active.exercises[x + 1].ss === ex.ss ? 'Separar do próximo exercício' : 'Fazer supersérie com o próximo'}</div><div class="sub">${esc(S.active.exercises[x + 1].name)}</div></div></button>` : ''}
         ${x > 0 ? `<button class="row" data-act="exMove" data-x="${x}" data-d="-1"><div class="grow name">Mover para cima</div></button>` : ''}
         ${x < S.active.exercises.length - 1 ? `<button class="row" data-act="exMove" data-x="${x}" data-d="1"><div class="grow name">Mover para baixo</div></button>` : ''}
         ${ex.kind === 'w' && typeof warmupSets === 'function' ? `<button class="row" data-act="addWarmup" data-x="${x}"><div class="grow"><div class="name">Adicionar aquecimento</div><div class="sub">Séries leves calculadas pela carga de trabalho</div></div></button>
@@ -1979,8 +2052,9 @@ const ACT = {
       </div></div>`);
   },
   exRest: el => { S.active.exercises[+el.dataset.x].rest = +el.dataset.v; save(); closeSheet(); rerender(); },
-  exMove: el => { moveItem(S.active.exercises, +el.dataset.x, +el.dataset.d); save(); closeSheet(); rerender(); },
-  exRemove: el => { S.active.exercises.splice(+el.dataset.x, 1); save(); closeSheet(); rerender(); },
+  exMove: el => { moveItem(S.active.exercises, +el.dataset.x, +el.dataset.d); ssClean(S.active.exercises); save(); closeSheet(); rerender(); },
+  exRemove: el => { S.active.exercises.splice(+el.dataset.x, 1); ssClean(S.active.exercises); save(); closeSheet(); rerender(); },
+  exSS: el => { ssToggle(S.active.exercises, +el.dataset.x); save(); closeSheet(); rerender(); },
   exReplace: el => {
     const x = +el.dataset.x;
     closeSheet();
@@ -2084,7 +2158,7 @@ const ACT = {
     const routine = S.routines.find(r => r.id === s.routineId);
     startWorkout(s.name, s.routineId, s.exercises.map(e => {
       const it = routine && routine.items.find(i => i.exId === e.exId);
-      const n = makeActiveExercise(e.exId, e.sets.length, it ? it.reps : '', it ? it.rest : S.settings.rest, it ? it.note : '');
+      const n = makeActiveExercise(e.exId, e.sets.length, it ? it.reps : '', it ? it.rest : S.settings.rest, it ? it.note : '', e.ss || '');
       e.sets.forEach((x, i) => { n.sets[i].warm = !!x.warm; });
       return n;
     }));
@@ -2093,9 +2167,9 @@ const ACT = {
   // Ajustes
   exportData: el => exportData(el && el.dataset.ph != null ? el.dataset.ph === '1' : undefined),
   wipeData: () => confirmSheet({
-    title: 'Apagar tudo?', text: 'Fichas, histórico, dieta, fotos do progresso e exercícios personalizados serão apagados deste aparelho. Isso não pode ser desfeito.',
+    title: 'Apagar tudo?', text: `Fichas, histórico, dieta, fotos do progresso e exercícios personalizados serão apagados deste aparelho. Isso não pode ser desfeito.${typeof cloudOn === 'function' && cloudOn() ? ' A cópia da nuvem fica guardada: a sincronização e os lembretes são desligados neste aparelho.' : ''}`,
     ok: 'Apagar tudo', danger: true,
-    onOk: () => { S = blank(); save(); localStorage.removeItem(PREV_KEY); if (typeof ppWipe === 'function') ppWipe(); applyLook(); if (typeof aiSetKey === 'function') aiSetKey(''); toast('Dados apagados'); go('#/hoje'); }
+    onOk: () => { if (typeof cloudForget === 'function') cloudForget(); S = blank(); save(); localStorage.removeItem(PREV_KEY); if (typeof ppWipe === 'function') ppWipe(); applyLook(); if (typeof aiSetKey === 'function') aiSetKey(''); toast('Dados apagados'); go('#/hoje'); }
   }),
   undoImport: () => {
     const p = prevCopy();
@@ -2114,6 +2188,9 @@ if (typeof BODY_ACTIONS !== 'undefined') Object.assign(ACT, BODY_ACTIONS);
 if (typeof TOOLS_ACTIONS !== 'undefined') Object.assign(ACT, TOOLS_ACTIONS);
 if (typeof DIET_ACTIONS !== 'undefined') Object.assign(ACT, DIET_ACTIONS);
 if (typeof PHOTO_ACTIONS !== 'undefined') Object.assign(ACT, PHOTO_ACTIONS);
+if (typeof SHARE_ACTIONS !== 'undefined') Object.assign(ACT, SHARE_ACTIONS);
+if (typeof COACH_ACTIONS !== 'undefined') Object.assign(ACT, COACH_ACTIONS);
+if (typeof CLOUD_ACTIONS !== 'undefined') Object.assign(ACT, CLOUD_ACTIONS);
 
 function backToPicker() {
   renderPicker();
@@ -2141,6 +2218,8 @@ document.addEventListener('input', e => {
   const t = e.target;
   if (typeof dietInput === 'function' && dietInput(t)) return;
   if (typeof photoInput === 'function' && photoInput(t)) return;
+  if (typeof coachInput === 'function' && coachInput(t)) return;
+  if (typeof cloudInput === 'function' && cloudInput(t)) return;
   if (t.dataset.wf && S.active) {
     const ex = S.active.exercises[+t.dataset.x];
     ex.sets[+t.dataset.s][t.dataset.wf] = t.value.replace(/[^\d.,]/g, '');
@@ -2173,6 +2252,8 @@ document.addEventListener('change', e => {
   const t = e.target;
   if (typeof dietChange === 'function' && dietChange(t)) return;
   if (typeof photoChange === 'function' && photoChange(t)) return;
+  if (typeof shareChange === 'function' && shareChange(t)) return;
+  if (typeof cloudChange === 'function' && cloudChange(t)) return;
   if (t.dataset.setting === 'rest') { S.settings.rest = +t.value; save(); toast('Descanso padrão atualizado'); }
   else if (t.dataset.setting === 'sound') { S.settings.sound = t.checked; save(); if (t.checked) { unlockAudio(); beep(); } }
   else if (t.dataset.setting === 'keepAwake') { S.settings.keepAwake = t.checked; save(); syncWakeLock(); }
@@ -2293,6 +2374,8 @@ document.addEventListener('pointerdown', () => { if (S.settings.glassMotion) gla
 /* ================= Início ================= */
 applyLook();
 setInterval(tick, 500);
+// Conquistas: na primeira abertura desta versão, marca em silêncio as que já foram alcançadas
+if (typeof achCheck === 'function' && !S.ach) { achCheck(); save(); }
 route();
 protectStorage();
 

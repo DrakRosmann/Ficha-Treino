@@ -1,0 +1,11 @@
+# Configuração para publicar com a linha de comando (npx wrangler deploy). Veja server/README.md.
+name = "ficha-sync"
+main = "worker.js"
+compatibility_date = "2025-01-01"
+
+[[kv_namespaces]]
+binding = "FICHA"
+id = "COLE_AQUI_O_ID_DO_KV"
+
+[triggers]
+crons = ["*/5 * * * *"]
