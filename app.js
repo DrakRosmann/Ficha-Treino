@@ -1606,7 +1606,7 @@ function viewAjustes() {
       <span class="muted">O app abre em tela cheia, funciona offline e mantém seus dados.</span></div>`}
 
     <div style="text-align:center;margin-top:22px"><button class="link-btn" data-act="checkUpdate">Procurar atualização</button></div>
-    <p class="small muted" style="text-align:center;margin-top:6px">Ficha · versão 2.5.1<br>
+    <p class="small muted" style="text-align:center;margin-top:6px">Ficha · versão 2.5.2<br>
       Fotos e músculos dos exercícios: <a href="https://github.com/yuhonas/free-exercise-db" target="_blank" rel="noopener" style="text-decoration:underline">free-exercise-db</a> (domínio público)<br>
       Desenho do mapa muscular: <a href="https://github.com/GV79/react-body-highlighter" target="_blank" rel="noopener" style="text-decoration:underline">react-body-highlighter</a> (MIT)<br>
       Alimentos: TACO, 4ª ed. (NEPA/UNICAMP) e <a href="https://world.openfoodfacts.org" target="_blank" rel="noopener" style="text-decoration:underline">Open Food Facts</a> (ODbL)</p>`;
@@ -2337,7 +2337,8 @@ window.addEventListener('scroll', () => glassScroll(false), { passive: true });
     if (!isGlass() || bar.classList.contains('mini')) return;
     const i = idxAt(e.clientX);
     if (i < 0) return;
-    scrub = { start: i, i, x: e.clientX, moved: false };
+    if (scrub) cancel(); // um toque anterior que o sistema não terminou
+    scrub = { id: e.pointerId, start: i, i, x: e.clientX, moved: false };
     bar.classList.add('press');
     if (typeof liquidTabPress === 'function') liquidTabPress(true);
   });
@@ -2368,6 +2369,8 @@ window.addEventListener('scroll', () => glassScroll(false), { passive: true });
     if (typeof liquidTabReset === 'function') liquidTabReset();
   };
   window.addEventListener('touchcancel', cancel);
+  // Qualquer outro toque na tela com o arraste ainda ativo: o anterior acabou sem aviso
+  window.addEventListener('pointerdown', e => { if (scrub && e.pointerId !== scrub.id) cancel(); }, true);
   window.addEventListener('blur', cancel);
   window.addEventListener('pagehide', cancel);
   document.addEventListener('visibilitychange', () => { if (document.hidden) cancel(); });
