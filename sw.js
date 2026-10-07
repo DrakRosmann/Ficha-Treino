@@ -1,6 +1,6 @@
 // Service worker: deixa o app funcionando offline.
 // Ao publicar uma nova versão, aumente o número em CACHE para forçar a atualização.
-const CACHE = 'ficha-v2';
+const CACHE = 'ficha-v3';
 // Fotos dos exercícios: cache separado, que sobrevive às atualizações do app (mesmo nome em app.js).
 const IMG_CACHE = 'ficha-img-v1';
 const ASSETS = [
@@ -9,6 +9,7 @@ const ASSETS = [
   './styles.css',
   './app.js',
   './exercises.js',
+  './templates.js',
   './manifest.webmanifest',
   './icons/icon-192.png',
   './icons/icon-512.png',
@@ -16,7 +17,8 @@ const ASSETS = [
 ];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
+  // cache: 'reload' ignora o cache HTTP e baixa a versão mais nova de cada arquivo
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS.map(u => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', e => {
@@ -41,8 +43,10 @@ self.addEventListener('fetch', e => {
   }
 
   // Rede primeiro (pega atualizações quando há internet), cache como reserva offline.
+  // Os arquivos do app são sempre conferidos com o servidor (no-cache), para atualizar na hora.
+  const req = e.request.mode === 'navigate' ? e.request : new Request(e.request, { cache: 'no-cache' });
   e.respondWith(
-    fetch(e.request)
+    fetch(req)
       .then(res => {
         const copy = res.clone();
         caches.open(CACHE).then(c => c.put(e.request, copy));
