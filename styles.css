@@ -225,7 +225,7 @@ select.input { background-image: linear-gradient(45deg, transparent 50%, var(--m
 .workout-head .meta { display: flex; gap: 14px; font-size: 13px; color: var(--muted); margin-top: 4px; }
 .workout-head .meta b { color: var(--text); }
 .progress { height: 4px; background: var(--surface-2); border-radius: 2px; margin-top: 10px; overflow: hidden; }
-.progress i { display: block; height: 100%; background: var(--accent); border-radius: 2px; transition: width .3s; }
+.progress i { display: block; width: 100%; height: 100%; background: var(--accent); border-radius: 2px; transform-origin: left; transform: scaleX(0); }
 
 .ex-card { background: var(--surface); border-radius: var(--radius); padding: 14px 12px 10px; margin-bottom: 12px; }
 .ex-card.complete { box-shadow: inset 0 0 0 2px var(--accent-soft); }
@@ -378,7 +378,7 @@ body.in-workout #view { padding-bottom: calc(var(--safe-b) + 110px); }
   z-index: 80; background: var(--text); color: var(--bg);
   padding: 11px 18px; border-radius: 14px; font-weight: 600; font-size: 15px;
   box-shadow: 0 10px 30px rgba(0,0,0,.3); max-width: calc(100% - 32px);
-  animation: drop .38s cubic-bezier(.3,1.4,.5,1);
+  animation: drop var(--lq-spring-d, .38s) var(--lq-spring, cubic-bezier(.3,1.4,.5,1));
 }
 #toast.out { animation: toast-out .22s ease-in forwards; }
 @keyframes toast-out { to { transform: translate(-50%, -14px); opacity: 0; } }
@@ -787,13 +787,14 @@ body.in-workout #toast { top: calc(var(--safe-t) + 96px); }
 .ai-orb {
   width: 72px; height: 72px; margin: 0 auto; border-radius: 50%; display: grid; place-items: center;
   background: radial-gradient(circle at 30% 30%, color-mix(in srgb, var(--accent) 90%, #fff), var(--accent));
-  color: var(--accent-ink); animation: ai-pulse 1.6s ease-in-out infinite;
+  color: var(--accent-ink); position: relative;
   box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 50%, transparent);
 }
 .ai-orb svg { width: 34px; height: 34px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linejoin: round; animation: ai-spin 6s linear infinite; }
-@keyframes ai-pulse { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 45%, transparent); } 50% { box-shadow: 0 0 0 16px transparent; } }
+.ai-orb::after { content: ""; position: absolute; inset: 0; border-radius: 50%; border: 3px solid color-mix(in srgb, var(--accent) 60%, transparent); animation: ai-ring 1.6s cubic-bezier(.2, .7, .3, 1) infinite; pointer-events: none; }
+@keyframes ai-ring { from { transform: scale(1); opacity: .9; } to { transform: scale(1.5); opacity: 0; } }
 @keyframes ai-spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .ai-orb, .ai-orb svg { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .ai-orb, .ai-orb svg, .ai-orb::after { animation: none; } }
 
 /* ===== Mapa muscular ===== */
 .bm { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
@@ -921,9 +922,9 @@ body.in-workout #toast { top: calc(var(--safe-t) + 96px); }
 /* Interruptor do Material 3 */
 :root[data-material] .switch { width: 52px; height: 32px; }
 :root[data-material] .switch i { border-radius: 16px; background: var(--surface-3); box-shadow: inset 0 0 0 2px var(--faint); transition: background .2s, box-shadow .2s; }
-:root[data-material] .switch i::after { top: 8px; left: 8px; width: 16px; height: 16px; background: var(--faint); box-shadow: none; transition: all .2s cubic-bezier(.2, 0, 0, 1); }
+:root[data-material] .switch i::after { top: 4px; left: 4px; width: 24px; height: 24px; background: var(--faint); box-shadow: none; transform: scale(.6667); transition: transform .3s cubic-bezier(.2, 0, 0, 1), background-color .2s; }
 :root[data-material] .switch input:checked + i { background: var(--accent); box-shadow: none; }
-:root[data-material] .switch input:checked + i::after { top: 4px; left: 4px; width: 24px; height: 24px; background: var(--accent-ink); transform: translateX(20px); }
+:root[data-material] .switch input:checked + i::after { background: var(--accent-ink); transform: translateX(20px) scale(1); }
 
 /* Barra de navegação: indicador em cápsula atrás do ícone ativo */
 :root[data-material] #tabs { background: var(--surface); border-top: 0; -webkit-backdrop-filter: none; backdrop-filter: none; }
@@ -1078,10 +1079,10 @@ body.in-workout #toast { top: calc(var(--safe-t) + 96px); }
 }
 #tabs.no-tab .tab-pill { opacity: 0; }
 @media (prefers-reduced-motion: no-preference) {
-  :root:not([data-material]) #tabs a.on svg { animation: tab-pop .45s cubic-bezier(.3,1.5,.5,1); }
+  :root:not([data-material]) #tabs a.on svg { animation: tab-pop var(--lq-bounce-d, .45s) var(--lq-bounce, cubic-bezier(.3,1.5,.5,1)); }
   :root[data-material] #tabs a.on svg { background: linear-gradient(var(--md-secondary-container), var(--md-secondary-container)) center / 100% 100% no-repeat; animation: md-ind .4s cubic-bezier(.2,0,0,1); }
 }
-@keyframes tab-pop { 0% { transform: scale(.8); } 55% { transform: scale(1.12); } 100% { transform: scale(1); } }
+@keyframes tab-pop { from { transform: scale(.78); } }
 @keyframes md-ind { from { background-size: 0% 100%; } }
 #tabs a { transition: color .25s; }
 
@@ -1090,25 +1091,28 @@ body.in-workout #toast { top: calc(var(--safe-t) + 96px); }
 .chip:active, .seg button:active, .icon-btn:active { transform: scale(.94); }
 .tpl-banner:active, a.card:active { transform: scale(.985); }
 .sw:active i { transform: scale(.9); }
-.switch i::after { transition: transform .32s cubic-bezier(.3,1.4,.5,1), width .2s, height .2s, top .2s, left .2s, background .2s; }
+.switch i::after { transition: transform var(--lq-spring-d, .32s) var(--lq-spring, cubic-bezier(.3,1.4,.5,1)), background-color .2s; }
 
 /* Série concluída */
-.sets tr.pop .check { animation: check-pop .5s cubic-bezier(.3,1.6,.5,1); }
+.sets tr.pop .check { animation: check-pop var(--lq-bounce-d, .5s) var(--lq-bounce, cubic-bezier(.3,1.6,.5,1)); }
 .sets tr.pop .check svg path { stroke-dasharray: 1; animation: draw .32s .05s ease-out both; }
-.sets tr.pop input, .sets tr.pop select.rir { animation: cell-flash .7s ease-out; }
-@keyframes check-pop { 0% { transform: scale(.7); } 60% { transform: scale(1.12); } 100% { transform: scale(1); } }
-@keyframes cell-flash { 0% { box-shadow: inset 0 0 0 2px var(--accent); } 100% { box-shadow: inset 0 0 0 2px transparent; } }
-.ex-card.just-complete { animation: card-glow 1.1s ease-out; }
-@keyframes card-glow { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 60%, transparent), inset 0 0 0 2px var(--accent-soft); } 100% { box-shadow: 0 0 0 14px transparent, inset 0 0 0 2px var(--accent-soft); } }
-.progress i { transition: width .5s cubic-bezier(.3,1.2,.4,1); }
+@keyframes check-pop { from { transform: scale(.62); } }
+.ex-card { position: relative; }
+.ex-card.just-complete::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  box-shadow: 0 0 0 2px var(--accent), 0 0 26px color-mix(in srgb, var(--accent) 50%, transparent);
+  animation: glow-out 1s cubic-bezier(.2, .8, .2, 1) forwards;
+}
+@keyframes glow-out { from { opacity: 1; transform: scale(1); } to { opacity: 0; transform: scale(1.035); } }
+.progress i { transition: transform var(--lq-spring-d, .5s) var(--lq-spring, cubic-bezier(.3,1.2,.4,1)); }
 
 /* Dock (descanso / treino em andamento) */
-.dock-bar.in { animation: dock-in .45s cubic-bezier(.3,1.3,.5,1); }
+.dock-bar.in { animation: dock-in var(--lq-spring-d, .45s) var(--lq-spring, cubic-bezier(.3,1.3,.5,1)); }
 @keyframes dock-in { from { transform: translateY(30px) scale(.96); opacity: 0; } }
 
 /* Fim do treino */
-.summary-big .trophy-ic { animation: trophy-in .7s .05s cubic-bezier(.3,1.6,.5,1) both; }
-@keyframes trophy-in { 0% { transform: scale(.3) rotate(-25deg); opacity: 0; } 100% { transform: scale(1) rotate(0); opacity: 1; } }
+.summary-big .trophy-ic { animation: trophy-in var(--lq-bounce-d, .7s) .05s var(--lq-bounce, cubic-bezier(.3,1.6,.5,1)) both; }
+@keyframes trophy-in { from { transform: scale(.3) rotate(-25deg); opacity: 0; } }
 .confetti { position: fixed; inset: 0; pointer-events: none; z-index: 90; overflow: hidden; }
 .confetti i { position: absolute; border-radius: 2px; will-change: transform; }
 
@@ -1312,7 +1316,7 @@ button.pp:active { transform: scale(.97); }
 .ach-detail h3 { margin: 4px 0 6px; font-size: 22px; }
 .ach-detail p { margin: 0 0 8px; line-height: 1.45; max-width: 300px; }
 .ach-tier { margin-top: 14px; font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
-#sheet .ach-detail .ach-b.lg { animation: ach-pop .6s cubic-bezier(.3, 1.5, .5, 1) both; }
+#sheet .ach-detail .ach-b.lg { animation: ach-pop var(--lq-bounce-d, .6s) var(--lq-bounce, cubic-bezier(.3, 1.5, .5, 1)) both; }
 @keyframes ach-pop { from { transform: scale(.4) rotate(-20deg); opacity: 0; } }
 #view.anim .ach-grid .ach-cell { animation: rise .45s both; }
 
@@ -1444,3 +1448,7 @@ button.pp:active { transform: scale(.97); }
 @keyframes lq-toast-out { to { scale: .35 .55; translate: 0 -18px; opacity: 0; } }
 :root.lq[data-glass] .dock-bar.in { animation: lq-dock var(--lq-bounce-d) var(--lq-bounce); }
 @keyframes lq-dock { from { scale: .55 .7; translate: 0 26px; opacity: 0; } }
+
+/* ===== Fluidez em todos os estilos =====
+   Elementos que entram e saem se movendo ganham camada própria no compositor enquanto aparecem. */
+#sheet:not([hidden]), #toast:not([hidden]), .dock-bar.in, .tab-pill { will-change: transform; }
