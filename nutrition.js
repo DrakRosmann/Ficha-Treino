@@ -59,13 +59,14 @@ function foodMap() {
   if (FOOD_MAP) return FOOD_MAP;
   FOOD_MAP = new Map();
   if (typeof TACO_FOODS !== 'undefined') {
-    for (const [id, n, gr, k, p, c, f, fi] of TACO_FOODS) FOOD_MAP.set('t' + id, { id: 't' + id, n, gr, k, p, c, f, fi, u: unitsFor(n), src: 'TACO' });
+    for (const [id, n, gr, k, p, c, f, fi, ...mi] of TACO_FOODS) FOOD_MAP.set('t' + id, { id: 't' + id, n, gr, k, p, c, f, fi, mi, u: unitsFor(n), src: 'TACO' });
     for (const [id, n, gr, k, p, c, f, fi, u] of EXTRA_FOODS) FOOD_MAP.set('x' + id, { id: 'x' + id, n, gr, k, p, c, f, fi, u: [u], src: 'média de rótulos' });
   }
   return FOOD_MAP;
 }
 function dietData() {
   if (!S.food) S.food = { days: {}, custom: [], fav: [], recent: [], goal: null, tdee: null };
+  if (!S.food.meals) S.food.meals = [];
   return S.food;
 }
 function getFood(id) { return foodMap().get(id) || dietData().custom.find(f => f.id === id) || null; }
@@ -101,7 +102,40 @@ function foodSearch(q) {
 // Macros de uma quantidade em gramas
 function macrosOf(f, g) {
   const r = g / 100;
-  return { k: Math.round(f.k * r), p: Math.round(f.p * r * 10) / 10, c: Math.round(f.c * r * 10) / 10, f: Math.round(f.f * r * 10) / 10, fi: Math.round((f.fi || 0) * r * 10) / 10 };
+  const out = { k: Math.round(f.k * r), p: Math.round(f.p * r * 10) / 10, c: Math.round(f.c * r * 10) / 10, f: Math.round(f.f * r * 10) / 10, fi: Math.round((f.fi || 0) * r * 10) / 10 };
+  if (f.mi) out.mi = f.mi.map(v => Math.round(v * r * 10) / 10);
+  return out;
+}
+// Micronutrientes (TACO): [sódio, cálcio, ferro, potássio, magnésio, vitamina C] em mg.
+// Referências diárias para adultos (OMS / IOM); o sódio é um limite, não uma meta.
+const MICROS = [
+  ['na', 'Sódio', 'mg', () => 2000, true],
+  ['k', 'Potássio', 'mg', () => 3510],
+  ['ca', 'Cálcio', 'mg', () => 1000],
+  ['fe', 'Ferro', 'mg', sx => sx === 'f' ? 18 : 8],
+  ['mg', 'Magnésio', 'mg', sx => sx === 'f' ? 320 : 420],
+  ['vc', 'Vitamina C', 'mg', sx => sx === 'f' ? 75 : 90]
+];
+const MICRO_IDX = { na: 0, ca: 1, fe: 2, k: 3, mg: 4, vc: 5 };
+function dayMicros(key) {
+  const e = dayOf(key).e, tot = [0, 0, 0, 0, 0, 0];
+  for (const x of e) if (x.mi) x.mi.forEach((v, i) => { tot[i] += v || 0; });
+  const kAll = sum(e.map(x => x.k)), kKnown = sum(e.filter(x => x.mi).map(x => x.k));
+  return { tot, cover: kAll ? kKnown / kAll : 0, fi: sum(e.map(x => x.fi || 0)) };
+}
+function microsHTML(key) {
+  const m = dayMicros(key), sx = (S.profile || {}).sexo;
+  if (!dayOf(key).e.length) return '';
+  const fiRef = sx === 'm' ? 30 : 25;
+  const bar = (name, v, ref, unit, limit, dec = 0) => {
+    const pct = ref ? v / ref * 100 : 0;
+    return `<div class="micro ${limit ? 'limit' : ''} ${limit && pct > 100 ? 'over' : ''}"><div class="mtop"><span>${name}${limit ? ' <small>(limite)</small>' : ''}</span><b class="num">${fmt(v, dec)}<small> / ${fmt(ref, 0)} ${unit}</small></b></div>
+      <div class="mtrack"><i style="width:${Math.min(100, pct)}%"></i></div></div>`;
+  };
+  return `<h2 class="section">Micronutrientes</h2><div class="card micros">
+    ${bar('Fibras', m.fi, fiRef, 'g', false, 1)}
+    ${MICROS.map(([k, name, unit, ref, limit]) => bar(name, m.tot[MICRO_IDX[k]], ref(sx), unit, limit, k === 'fe' || k === 'vc' ? 1 : 0)).join('')}
+    <p class="small muted" style="margin:8px 0 0;line-height:1.45">Pela Tabela TACO. ${m.cover < 0.98 ? `Cobre ${Math.round(m.cover * 100)}% das calorias do dia: itens da IA, do código de barras e criados por você não têm micronutrientes. ` : ''}Referências diárias para adultos (OMS e IOM).</p></div>`;
 }
 
 /* ================= Dias e registros ================= */
@@ -286,11 +320,12 @@ function viewDieta() {
       <button class="icon-btn sm" data-act="dAdd" data-m="${mi}" aria-label="Adicionar em ${m}">${I.plus}</button></div>
       ${items.length ? `<div class="list">${items.map(e => `<button class="row" data-act="dEntry" data-id="${e.id}">
         <div class="grow"><div class="name">${esc(e.n)}</div><div class="sub">${e.q && e.u ? `${fmt(e.q, 2)} ${esc(unitLabel(e.q, e.u))} · ` : ''}${fmt(e.gr, 0)} g · P ${fmt(e.p, 0)} · C ${fmt(e.c, 0)} · G ${fmt(e.f, 0)}</div></div>
-        <b class="num kc">${fmtInt(e.k)}</b></button>`).join('')}</div>`
+        <b class="num kc">${fmtInt(e.k)}</b></button>`).join('')}</div>${items.length > 1 ? `<button class="link-btn meal-copy" data-act="dMealSave" data-m="${mi}">Salvar como refeição pronta</button>` : ''}`
       : yItems.length ? `<button class="link-btn meal-copy" data-act="dCopyMeal" data-m="${mi}">Repetir de ontem (${yItems.length} ${yItems.length > 1 ? 'itens' : 'item'} · ${fmtInt(sum(yItems.map(e => e.k)))} kcal)</button>` : ''}
     </div>`;
   });
 
+  html += microsHTML(key);
   // Semana
   html += dietWeekHTML(tg);
   html += `<p class="small muted" style="margin:16px 4px 0;line-height:1.5">Alimentos da Tabela Brasileira de Composição de Alimentos (TACO, NEPA/UNICAMP). Os valores são estimativas — para orientação individual, procure um nutricionista.</p>`;
@@ -345,7 +380,7 @@ function dietAddSheet(m) {
     <div class="sheet-body" id="foodlist">${foodList()}</div>`);
 }
 function foodTabs() {
-  return [['recent', 'Recentes'], ['fav', 'Favoritos'], ['mine', 'Meus alimentos']].map(([v, l]) => `<button class="chip ${dPick.tab === v && !dPick.q ? 'on' : ''}" data-act="dTab" data-v="${v}">${l}</button>`).join('');
+  return [['recent', 'Recentes'], ['fav', 'Favoritos'], ['meals', 'Refeições'], ['mine', 'Meus alimentos']].map(([v, l]) => `<button class="chip ${dPick.tab === v && !dPick.q ? 'on' : ''}" data-act="dTab" data-v="${v}">${l}</button>`).join('');
 }
 function foodRow(f) {
   const u = f.u && f.u[0];
@@ -353,8 +388,18 @@ function foodRow(f) {
     <div class="sub">${fmtInt(f.k)} kcal · P ${fmt(f.p, 1)} · C ${fmt(f.c, 1)} · G ${fmt(f.f, 1)} <span class="muted">/ 100 g${u ? ` · ${esc(u[0])} ${fmt(u[1], 0)} g` : ''}</span></div></div>
     ${dietData().fav.includes(f.id) ? '<span class="fav-dot" aria-label="Favorito">★</span>' : ''}</button>`;
 }
+function mealRow(ml) {
+  const k = sum(ml.items.map(x => x.k)), p = sum(ml.items.map(x => x.p));
+  return `<div class="pick-wrap meal-row"><button class="pick" data-act="dMealUse" data-id="${ml.id}"><div class="grow"><div class="name">${esc(ml.n)}</div>
+    <div class="sub">${fmtInt(k)} kcal · P ${fmt(p, 0)} g · ${ml.items.length} itens: ${esc(ml.items.map(x => x.n.split(',')[0]).slice(0, 4).join(', '))}${ml.items.length > 4 ? '…' : ''}</div></div></button>
+    <button class="icon-btn" data-act="dMealDel" data-id="${ml.id}" aria-label="Apagar refeição pronta">${I.trash}</button></div>`;
+}
 function foodList() {
   const D = dietData();
+  if (!dPick.q && dPick.tab === 'meals') {
+    return D.meals.length ? D.meals.map(mealRow).join('')
+      : '<p class="muted small" style="text-align:center;padding:22px 10px;line-height:1.5">Monte uma refeição e toque em “Salvar como refeição pronta”. Depois ela entra inteira num toque.</p>';
+  }
   let list;
   if (dPick.q) list = foodSearch(dPick.q);
   else if (dPick.tab === 'fav') list = D.fav.map(getFood).filter(Boolean);
@@ -715,6 +760,26 @@ const DIET_ACTIONS = {
     d.w = Math.max(0, (d.w || 0) + +el.dataset.v); save(); rerender();
   },
   dCustom: () => customSheet({}),
+  dMealSave: el => {
+    const m = +el.dataset.m, items = dayOf(dayKey(dietT())).e.filter(e => e.m === m);
+    if (!items.length) return;
+    const n = prompt('Nome da refeição pronta', `${MEALS[m]} de sempre`);
+    if (!n || !n.trim()) return;
+    dietData().meals.push({ id: 'm' + uid(), n: n.trim(), items: items.map(({ id, m, ...x }) => x) });
+    save(); toast('Refeição salva — está em Adicionar → Refeições');
+  },
+  dMealUse: el => {
+    const ml = dietData().meals.find(x => x.id === el.dataset.id);
+    if (!ml) return;
+    const key = dayKey(dietT());
+    for (const x of ml.items) addEntry(key, { ...x, m: dPick.m });
+    save(); closeSheet(); rerender(); toast(`${ml.n} adicionada em ${MEALS[dPick.m]}`);
+  },
+  dMealDel: el => {
+    const id = el.dataset.id, D = dietData();
+    D.meals = D.meals.filter(x => x.id !== id);
+    save(); $('#foodlist').innerHTML = foodList();
+  },
   dCustomSave: el => {
     const n = ($('#cfName').value || '').trim(), k = num($('#cfK').value);
     if (!n) { toast('Dê um nome ao alimento'); return; }

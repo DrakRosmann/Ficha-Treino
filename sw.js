@@ -1,6 +1,6 @@
 // Service worker: deixa o app funcionando offline.
 // Ao publicar uma nova versão, aumente o número em CACHE para forçar a atualização.
-const CACHE = 'ficha-v12';
+const CACHE = 'ficha-v14';
 // Fotos dos exercícios: cache separado, que sobrevive às atualizações do app (mesmo nome em app.js).
 const IMG_CACHE = 'ficha-img-v1';
 const ASSETS = [
@@ -16,6 +16,9 @@ const ASSETS = [
   './foods.js',
   './nutrition.js',
   './photos.js',
+  './share.js',
+  './coach.js',
+  './cloud.js',
   './manifest.webmanifest',
   './fonts/google-sans-flex.woff2',
   './icons/icon-192.png',
@@ -61,4 +64,22 @@ self.addEventListener('fetch', e => {
       })
       .catch(() => caches.match(e.request, { ignoreSearch: true }).then(r => r || caches.match('./index.html')))
   );
+});
+
+// Lembretes (Web Push): o servidor manda { title, body, url, tag }
+self.addEventListener('push', e => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch (err) { d = { body: e.data && e.data.text() }; }
+  e.waitUntil(self.registration.showNotification(d.title || 'Ficha', {
+    body: d.body || '', tag: d.tag || undefined, icon: './icons/icon-192.png', badge: './icons/icon-192.png', data: { url: d.url || './' }
+  }));
+});
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  const url = new URL((e.notification.data && e.notification.data.url) || './', self.registration.scope).href;
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
+    const c = list.find(w => w.url.startsWith(self.registration.scope));
+    if (c) return c.focus().then(w => (w || c).navigate ? (w || c).navigate(url) : null).catch(() => self.clients.openWindow(url));
+    return self.clients.openWindow(url);
+  }));
 });
