@@ -89,7 +89,7 @@ No Chrome/Firefox use o modo de dispositivo móvel (F12 → ícone de celular) p
 
 ## Atualizar o app
 
-Edite os arquivos, aumente a versão em `sw.js` (`const CACHE = 'ficha-v18'`) e faça `git push`.
+Edite os arquivos, aumente a versão em `sw.js` (`const CACHE = 'ficha-v19'`) e faça `git push`.
 O app procura a versão nova sozinho sempre que é aberto (com internet) e recarrega uma vez quando encontra. Se quiser forçar, use **Ajustes → Procurar atualização**. Os dados não são apagados.
 
 ## Estrutura
