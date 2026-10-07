@@ -73,12 +73,15 @@ const I = {
   dumbbell: '<svg viewBox="0 0 24 24"><path d="M2.5 12h2M19.5 12h2M8 12h8"/><rect x="4.5" y="7.5" width="3.5" height="9" rx="1"/><rect x="16" y="7.5" width="3.5" height="9" rx="1"/></svg>',
   list: '<svg viewBox="0 0 24 24"><rect x="5" y="3.5" width="14" height="17" rx="2"/><path d="M8.5 9h7M8.5 13h7M8.5 17h4"/></svg>',
   chart: '<svg viewBox="0 0 24 24"><path d="M3.5 19.5h17"/><path d="M6 16l4-5 3.5 3 5-7"/></svg>',
-  trophy: '<svg viewBox="0 0 24 24"><path d="M8 4.5h8v5a4 4 0 0 1-8 0zM8 6.5H5a3 3 0 0 0 3 4M16 6.5h3a3 3 0 0 1-3 4M12 13.5V17M8.5 20h7M10 17h4v3h-4z"/></svg>'
+  trophy: '<svg viewBox="0 0 24 24"><path d="M8 4.5h8v5a4 4 0 0 1-8 0zM8 6.5H5a3 3 0 0 0 3 4M16 6.5h3a3 3 0 0 1-3 4M12 13.5V17M8.5 20h7M10 17h4v3h-4z"/></svg>',
+  video: '<svg viewBox="0 0 24 24"><rect x="3" y="5.5" width="18" height="13" rx="3"/><path d="M10.5 9.5v5l4-2.5z"/></svg>',
+  expand: '<svg viewBox="0 0 24 24"><path d="M14 4.5h5.5V10M10 19.5H4.5V14M19.5 4.5 13.5 10.5M4.5 19.5l6-6"/></svg>',
+  download: '<svg viewBox="0 0 24 24"><path d="M12 4.5v11M7 11l5 5 5-5M5 19.5h14"/></svg>'
 };
 
 /* ================= Estado ================= */
 function blank() {
-  return { v: 1, settings: { rest: 90, sound: true }, custom: [], routines: [], sessions: [], active: null };
+  return { v: 1, settings: { rest: 90, sound: true }, custom: [], routines: [], sessions: [], active: null, videos: {} };
 }
 function load() {
   try {
@@ -103,6 +106,80 @@ function allEx() { return BUILTIN_EXERCISES.concat(S.custom); }
 function getEx(id) { return EXMAP.get(id) || S.custom.find(e => e.id === id) || null; }
 function exName(id, fb) { const e = getEx(id); return e ? e.name : (fb || 'Exercício removido'); }
 function exKind(id, fb) { const e = getEx(id); return e ? e.kind : (fb || 'w'); }
+
+/* ================= Execução: foto, músculos e vídeo ================= */
+const IMG_CACHE = 'ficha-img-v1'; // mesmo nome usado em sw.js
+const isUrl = s => /^https?:\/\/\S+$/i.test(String(s || ''));
+const ytUrl = q => 'https://www.youtube.com/results?search_query=' + encodeURIComponent(q);
+
+// Miniatura (posição inicial). Se a foto não carregar (offline), fica o ícone.
+function thumb(ex) {
+  return `<span class="thumb">${I.dumbbell}${ex && ex.img ? `<img src="img/thumb/${ex.img}.webp" alt="" loading="lazy" decoding="async" onerror="this.remove()">` : ''}</span>`;
+}
+// Foto animada alternando posição inicial e final
+function demo(ex) {
+  if (!ex || !ex.img) return `<div class="demo off"><div class="demo-off">${I.dumbbell}<span>Sem foto para este exercício.<br>Veja um vídeo abaixo.</span></div></div>`;
+  const src = `img/ex/${ex.img}.webp`;
+  return `<div class="demo" role="img" aria-label="Execução: posição inicial e final">
+    <div class="demo-off">${I.dumbbell}<span>A foto aparece quando houver internet.</span></div>
+    <img src="${src}" alt="" decoding="async" onerror="this.parentNode.classList.add('off')"><img class="f2" src="${src}" alt="" decoding="async">
+    <b class="demo-step s1">1 · Início</b><b class="demo-step s2">2 · Fim</b></div>`;
+}
+function musclesHTML(ex) {
+  if (!ex || !(ex.primary || []).length) return '';
+  const tag = (c, p) => `<span class="mtag ${p ? 'p' : ''}">${esc(MUSCLES[c] || c)}</span>`;
+  return `<div class="muscles">${ex.primary.map(c => tag(c, true)).join('')}${(ex.secondary || []).map(c => tag(c, false)).join('')}</div>`;
+}
+function videoActions(id) {
+  const ex = getEx(id), name = ex ? ex.name : exName(id), mine = S.videos[id];
+  return `<div class="video-actions">
+    ${isUrl(mine) ? `<a class="btn primary block" href="${esc(mine)}" target="_blank" rel="noopener">${I.play}Meu vídeo</a>` : ''}
+    <a class="btn block" href="${ytUrl('como fazer ' + name)}" target="_blank" rel="noopener">${I.video}Ver vídeos da execução</a>
+    <div class="video-links">
+      ${ex && ex.en ? `<a class="link-btn" href="${ytUrl(ex.en + ' exercise')}" target="_blank" rel="noopener">Buscar em inglês</a>` : '<span></span>'}
+      <button class="link-btn" data-act="setVideo" data-id="${id}">${mine ? 'Trocar meu vídeo' : 'Adicionar meu vídeo'}</button>
+    </div></div>`;
+}
+function openHowTo(id, opts = {}) {
+  const ex = getEx(id);
+  const evo = opts.evo && location.hash !== `#/exercicio/${id}`
+    ? `<a class="btn block" href="#/exercicio/${id}" data-act="closeSheet" style="margin-top:8px">${I.chart}Evolução e histórico</a>` : '';
+  openSheet(`${sheetHead(ex ? ex.name : exName(id))}
+    <div class="sheet-body">
+      ${demo(ex)}
+      ${ex ? `<div class="small muted" style="margin:10px 2px 0">${esc(ex.group)} · ${esc(ex.equip)}</div>` : ''}
+      ${musclesHTML(ex)}
+      ${videoActions(id)}${evo}
+    </div>${opts.foot || ''}`, { howTo: opts });
+}
+
+// Baixa todas as fotos para o cache do app (uso offline)
+let photoDl = null;
+async function downloadPhotos() {
+  if (photoDl || !('caches' in window)) return;
+  const urls = BUILTIN_EXERCISES.filter(e => e.img).flatMap(e => [`img/thumb/${e.img}.webp`, `img/ex/${e.img}.webp`]);
+  photoDl = { done: 0, total: urls.length, fail: 0 };
+  const paint = () => { const el = $('[data-photo-status]'); if (el) el.textContent = photoStatus(); };
+  paint();
+  try {
+    const c = await caches.open(IMG_CACHE);
+    for (let i = 0; i < urls.length; i += 8) {
+      await Promise.all(urls.slice(i, i + 8).map(async u => {
+        try {
+          if (!(await c.match(u))) { const r = await fetch(u); if (r.ok) await c.put(u, r); else photoDl.fail++; }
+        } catch (e) { photoDl.fail++; }
+        photoDl.done++;
+      }));
+      paint();
+    }
+    toast(photoDl.fail ? `Fotos baixadas, ${photoDl.fail} falharam — tente de novo` : 'Fotos salvas para usar offline');
+  } catch (e) { toast('Não foi possível salvar as fotos'); }
+  photoDl = null; paint();
+}
+function photoStatus() {
+  if (photoDl) return `Baixando… ${Math.round(photoDl.done / photoDl.total * 100)}%`;
+  return `${BUILTIN_EXERCISES.filter(e => e.img).length} exercícios · cerca de 19 MB`;
+}
 
 const isWork = s => !s.warm;
 function setVol(kind, s) { return kind === 'w' && isWork(s) ? (s.a || 0) * (s.b || 0) : 0; }
@@ -410,7 +487,8 @@ function viewFicha(id) {
     const ex = getEx(it.exId), kind = exKind(it.exId);
     const repsLabel = kind === 's' ? 'Segundos' : kind === 'c' ? 'Minutos' : 'Reps';
     return `<div class="card">
-      <div class="item-head"><div class="grow"><div class="name">${i + 1}. ${esc(exName(it.exId))}</div>
+      <div class="item-head"><button class="thumb-btn" data-act="howTo" data-id="${it.exId}" aria-label="Ver execução">${thumb(ex)}</button>
+        <div class="grow"><div class="name">${i + 1}. ${esc(exName(it.exId))}</div>
         <div class="small muted">${esc(ex ? `${ex.group} · ${ex.equip}` : '')}</div></div>
         <div class="item-tools">
           <button class="icon-btn" data-act="itemUp" data-i="${i}" aria-label="Subir" ${i === 0 ? 'disabled style="opacity:.3"' : ''}>${I.up}</button>
@@ -456,7 +534,7 @@ function renderPicker() {
 function pickBtnLabel() { const n = picker.sel.size; return n ? `Adicionar ${n} exercício${n > 1 ? 's' : ''}` : 'Selecione os exercícios'; }
 function filterEx(q, g) {
   const nq = norm(q.trim());
-  return allEx().filter(e => (!g || e.group === g) && (!nq || norm(e.name + ' ' + e.equip).includes(nq)));
+  return allEx().filter(e => (!g || e.group === g) && (!nq || norm(`${e.name} ${e.equip} ${e.en || ''}`).includes(nq)));
 }
 function groupedList(list, rowFn) {
   let out = '';
@@ -468,9 +546,10 @@ function groupedList(list, rowFn) {
 }
 function pickerList() {
   const p = picker, list = filterEx(p.q, p.g);
-  const rows = groupedList(list, e => `<button class="pick ${p.sel.has(e.id) ? 'on' : ''}" data-act="pickToggle" data-id="${e.id}">
-    <div class="grow"><div class="name">${esc(e.name)}</div><div class="sub">${esc(e.equip)}${e.custom ? ' · personalizado' : ''}</div></div>
-    ${p.multi ? `<span class="tick">${I.check}</span>` : I.chev}</button>`);
+  const rows = groupedList(list, e => `<div class="pick-wrap"><button class="pick ${p.sel.has(e.id) ? 'on' : ''}" data-act="pickToggle" data-id="${e.id}">
+    ${thumb(e)}<div class="grow"><div class="name">${esc(e.name)}</div><div class="sub">${esc(e.equip)}${e.custom ? ' · personalizado' : ''}</div></div>
+    ${p.multi ? `<span class="tick">${I.check}</span>` : I.chev}</button>
+    <button class="pick-info" data-act="pickPreview" data-id="${e.id}" aria-label="Ver execução de ${esc(e.name)}">${I.expand}</button></div>`);
   return (rows || `<div class="empty"><b>Nada encontrado</b>Não achou? Crie o exercício.</div>`) +
     `<div style="padding:16px 0"><button class="btn block" data-act="newExercise" data-from="picker">${I.plus}Criar exercício${p.q ? ` “${esc(p.q)}”` : ''}</button></div>`;
 }
@@ -504,7 +583,7 @@ function exList() {
   for (const g of GROUPS) {
     const items = list.filter(e => e.group === g).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
     if (!items.length) continue;
-    html += `<h2 class="section">${g}<span class="small">${items.length}</span></h2><div class="list">` + items.map(e => `<a class="row" href="#/exercicio/${e.id}">
+    html += `<h2 class="section">${g}<span class="small">${items.length}</span></h2><div class="list">` + items.map(e => `<a class="row" href="#/exercicio/${e.id}">${thumb(e)}
       <div class="grow"><div class="name">${esc(e.name)}</div><div class="sub">${esc(e.equip)}${e.custom ? ' · personalizado' : ''}${done.has(e.id) ? ' · <span style="color:var(--accent-text)">com histórico</span>' : ''}</div></div>${I.chev}</a>`).join('') + '</div>';
   }
   return html || `<div class="card">${emptyState(I.search, 'Nada encontrado', 'Tente outro termo ou crie um exercício novo.', `<button class="btn block" data-act="newExercise">${I.plus}Criar exercício</button>`)}</div>`;
@@ -523,6 +602,7 @@ function viewExercicio(id) {
 
   let html = topBar({ back: '#/exercicios', right: ex && ex.custom ? `<button class="link-btn" data-act="editExercise" data-id="${id}">Editar</button>` : '' }) +
     `<div class="eyebrow">${esc(ex ? `${ex.group} · ${ex.equip}` : 'Exercício removido')}</div><h1 class="title">${esc(name)}</h1>`;
+  if (ex) html += `${demo(ex)}${musclesHTML(ex)}${videoActions(id)}<h2 class="section">Seus registros</h2>`;
 
   if (!hist.length) {
     html += `<div class="card">${emptyState(I.chart, 'Sem registros ainda', 'Quando você fizer este exercício num treino, a evolução aparece aqui.')}</div>`;
@@ -642,7 +722,8 @@ function viewTreino() {
     }).join('');
     const targetTxt = [ex.sets.filter(s => !s.warm).length + ' × ' + (ex.target || '—') + (ex.kind === 's' ? 's' : ex.kind === 'c' ? ' min' : ''), `descanso ${fmtRest(ex.rest)}`].join(' · ');
     html += `<div class="ex-card ${allDone ? 'complete' : ''}">
-      <div class="ex-title"><div class="grow"><a class="name" href="#/exercicio/${ex.exId}">${esc(ex.name)}</a><div class="target num">${targetTxt}</div></div>
+      <div class="ex-title"><button class="thumb-btn" data-act="howTo" data-id="${ex.exId}" aria-label="Ver execução">${thumb(getEx(ex.exId))}</button>
+        <div class="grow"><a class="name" href="#/exercicio/${ex.exId}">${esc(ex.name)}</a><div class="target num">${targetTxt}</div></div>
         <button class="icon-btn" data-act="exMenu" data-x="${x}" aria-label="Opções do exercício" style="margin:-8px -6px 0 0">${I.more}</button></div>
       ${ex.note ? `<div class="ex-note">${esc(ex.note)}</div>` : ''}
       <table class="sets">${head}${rows}</table>
@@ -831,6 +912,12 @@ function viewAjustes() {
         <span class="switch"><input type="checkbox" data-setting="sound" ${S.settings.sound ? 'checked' : ''}><i></i></span></label>
     </div>
 
+    ${'caches' in window ? `<h2 class="section">Fotos dos exercícios</h2>
+    <div class="list">
+      <button class="row" data-act="downloadPhotos"><div class="grow"><div class="name">Baixar fotos para usar offline</div><div class="sub" data-photo-status>${photoStatus()}</div></div>${I.download.replace('<svg', '<svg class="chev"')}</button>
+    </div>
+    <p class="small muted" style="margin:10px 4px 0">Sem baixar, cada foto fica salva depois da primeira vez que aparece. Use no Wi-Fi.</p>` : ''}
+
     <h2 class="section">Seus dados</h2>
     <div class="list">
       <button class="row" data-act="exportData"><div class="grow"><div class="name">Exportar backup</div><div class="sub">Salve um arquivo .json no app Arquivos ou iCloud</div></div>${I.chev}</button>
@@ -848,7 +935,8 @@ function viewAjustes() {
       3. Escolha <b>Adicionar à Tela de Início</b> e confirme.<br>
       <span class="muted">O app abre em tela cheia, funciona offline e mantém seus dados.</span></div>`}
 
-    <p class="small muted" style="text-align:center;margin-top:26px">Ficha · versão 1.0</p>`;
+    <p class="small muted" style="text-align:center;margin-top:26px">Ficha · versão 1.1<br>
+      Fotos e músculos dos exercícios: <a href="https://github.com/yuhonas/free-exercise-db" target="_blank" rel="noopener" style="text-decoration:underline">free-exercise-db</a> (domínio público)</p>`;
 }
 
 function exportData() {
@@ -877,7 +965,7 @@ function importData(file) {
       ok: 'Importar', danger: true,
       onOk: () => {
         const b = blank();
-        S = { ...b, settings: { ...b.settings, ...(d.settings || {}) }, custom: d.custom || [], routines: d.routines, sessions: d.sessions.sort((x, y) => y.start - x.start), active: d.active || null };
+        S = { ...b, settings: { ...b.settings, ...(d.settings || {}) }, custom: d.custom || [], videos: d.videos || {}, routines: d.routines, sessions: d.sessions.sort((x, y) => y.start - x.start), active: d.active || null };
         save(); toast('Backup importado'); go('#/hoje');
       }
     });
@@ -1081,6 +1169,7 @@ const ACT = {
       <div class="list" style="margin-top:16px">
         ${x > 0 ? `<button class="row" data-act="exMove" data-x="${x}" data-d="-1"><div class="grow name">Mover para cima</div></button>` : ''}
         ${x < S.active.exercises.length - 1 ? `<button class="row" data-act="exMove" data-x="${x}" data-d="1"><div class="grow name">Mover para baixo</div></button>` : ''}
+        <button class="row" data-act="howTo" data-id="${ex.exId}"><div class="grow name">Ver execução (foto e vídeo)</div></button>
         <button class="row" data-act="exReplace" data-x="${x}"><div class="grow name">Substituir exercício</div></button>
         <a class="row" href="#/exercicio/${ex.exId}" data-act="closeSheet"><div class="grow name">Ver evolução</div></a>
         <button class="row" data-act="exRemove" data-x="${x}"><div class="grow name" style="color:var(--danger)">Remover do treino</div></button>
@@ -1129,6 +1218,36 @@ const ACT = {
   },
   restSkip: () => { if (S.active) { S.active.rest = null; save(); renderDock(); } },
 
+  // Execução (foto / vídeo)
+  howTo: el => openHowTo(el.dataset.id, { evo: true }),
+  setVideo: el => {
+    const id = el.dataset.id;
+    const v = prompt('Cole o link do vídeo da execução (YouTube, Instagram, Google Drive…). Deixe vazio para remover.', S.videos[id] || '');
+    if (v == null) return;
+    const t = v.trim();
+    if (t && !isUrl(t)) { toast('Link inválido — ele deve começar com https://'); return; }
+    if (t) S.videos[id] = t; else delete S.videos[id];
+    save(); toast(t ? 'Vídeo salvo' : 'Vídeo removido');
+    if (!$('#sheet').hidden && sheetCtx && sheetCtx.howTo) openHowTo(id, sheetCtx.howTo); else rerender();
+  },
+  pickPreview: el => {
+    const id = el.dataset.id, on = picker.sel.has(id);
+    picker.scroll = $('#picklist').scrollTop;
+    openHowTo(id, {
+      foot: `<div class="sheet-foot btn-row">
+        <button class="btn" data-act="pickBack">${I.back}Voltar</button>
+        <button class="btn primary" data-act="pickFromPreview" data-id="${id}">${!picker.multi ? 'Escolher' : on ? 'Desmarcar' : 'Selecionar'}</button></div>`
+    });
+  },
+  pickBack: () => backToPicker(),
+  pickFromPreview: el => {
+    const id = el.dataset.id;
+    if (!picker.multi) { const cb = picker.onDone; closeSheet(); picker = null; cb([id]); return; }
+    picker.sel.has(id) ? picker.sel.delete(id) : picker.sel.add(id);
+    backToPicker();
+  },
+  downloadPhotos: () => downloadPhotos(),
+
   // Histórico
   sessionMenu: el => {
     openSheet(`${sheetHead('Treino')}<div class="sheet-body"><div class="list">
@@ -1169,6 +1288,10 @@ const ACT = {
   })
 };
 
+function backToPicker() {
+  renderPicker();
+  const l = $('#picklist'); if (l) l.scrollTop = picker.scroll || 0;
+}
 function curRoutine() { const id = location.hash.split('/')[2]; return S.routines.find(r => r.id === id); }
 function moveItem(arr, i, d) {
   const j = i + d;
