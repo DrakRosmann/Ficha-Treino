@@ -86,7 +86,7 @@ const I = {
 /* ================= Estado ================= */
 function blank() {
   return {
-    v: 1, settings: { rest: 90, sound: true, theme: 'auto', accent: 'limao', glass: true, keepAwake: true, lockTimer: false },
+    v: 1, settings: { rest: 90, sound: true, theme: 'auto', accent: 'limao', glass: true, keepAwake: true, iosTimer: false, timerShortcut: 'Descanso Ficha' },
     custom: [], programs: [], routines: [], sessions: [], active: null, videos: {}, profile: null, body: [], bodyGoal: {}
   };
 }
@@ -100,6 +100,7 @@ function migrate(d) {
       d.routines.forEach(r => { r.programId = p.id; });
     }
   }
+  if (d.settings) delete d.settings.lockTimer; // opção antiga (descanso por áudio), removida
   return d;
 }
 function load() {
@@ -437,7 +438,6 @@ function route() {
 }
 function go(hash) { if (location.hash === hash) route(); else location.hash = hash; }
 function render() {
-  if (!S.active || !S.active.rest) { if (restAudioUrl) lockRestStop(); }
   syncWakeLock();
   const html = current();
   if (html == null) return; // a view redirecionou
@@ -947,10 +947,10 @@ function startRest(sec) {
   if (!S.active || !sec) return;
   S.active.rest = { end: Date.now() + sec * 1000, total: sec };
   save();
-  lockRestStart();
+  if (S.settings.iosTimer) iosTimerRun(sec);
 }
 
-/* ================= Tela ligada e descanso na tela bloqueada ================= */
+/* ================= Tela ligada e Timer do iPhone ================= */
 // Mantém a tela acesa durante o treino (Screen Wake Lock), para o cronômetro não parar.
 let wakeLock = null;
 function syncWakeLock() {
@@ -969,80 +969,31 @@ function syncWakeLock() {
   }
 }
 
-// Web apps no iPhone não têm Live Activities (exclusivas de apps nativos). O que existe é o
-// "Tocando agora": um áudio silencioso com o alarme no fim faz o iPhone mostrar o descanso na
-// tela bloqueada e na Dynamic Island, e o alarme toca mesmo com o celular bloqueado.
-// Contrapartida: o iPhone pausa a música de outros apps enquanto o áudio toca.
-const ALARM_SECS = 1.7;
-let restAudio = null, restAudioUrl = null;
-function restWav(seconds, withAlarm) {
-  const rate = 8000, n = Math.round((seconds + ALARM_SECS) * rate);
-  const buf = new Uint8Array(44 + n), v = new DataView(buf.buffer);
-  const str = (o, t) => { for (let i = 0; i < t.length; i++) buf[o + i] = t.charCodeAt(i); };
-  // Cabeçalho WAV: PCM 8 bits, mono, 8 kHz
-  str(0, 'RIFF'); v.setUint32(4, 36 + n, true); str(8, 'WAVE'); str(12, 'fmt ');
-  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
-  v.setUint32(24, rate, true); v.setUint32(28, rate, true); v.setUint16(32, 1, true); v.setUint16(34, 8, true);
-  str(36, 'data'); v.setUint32(40, n, true);
-  buf.fill(128, 44); // silêncio
-  if (withAlarm) {
-    const start = Math.round(seconds * rate), len = Math.round(0.18 * rate);
-    [0, 0.22, 0.44, 1, 1.22, 1.44].forEach((d, i) => {
-      const f = i % 3 === 2 ? 1320 : 880, s0 = start + Math.round(d * rate);
-      for (let k = 0; k < len && s0 + k < n; k++) {
-        const env = Math.min(1, k / 60, (len - k) / 60);
-        buf[44 + s0 + k] = 128 + Math.round(100 * env * Math.sin(2 * Math.PI * f * k / rate));
-      }
-    });
-  }
-  return new Blob([buf], { type: 'audio/wav' });
+// Web apps não podem criar Live Activities (só apps nativos). O app Atalhos do iPhone pode:
+// um atalho com a ação "Iniciar Timer" liga o Timer do relógio, que aparece na tela bloqueada
+// e na Dynamic Island e toca o alarme do iPhone. O app chama o atalho pelo link shortcuts://.
+function iosTimerRun(sec) {
+  const name = (S.settings.timerShortcut || '').trim() || 'Descanso Ficha';
+  location.href = `shortcuts://run-shortcut?name=${encodeURIComponent(name)}&input=text&text=${Math.max(1, Math.round(sec))}`;
 }
-function nextSetLabel() {
-  const a = S.active;
-  for (const ex of (a ? a.exercises : [])) {
-    const i = ex.sets.findIndex(x => !x.done);
-    if (i >= 0) return `Próximo: ${ex.name} · ${ex.sets[i].warm ? 'aquecimento' : `série ${ex.sets.slice(0, i + 1).filter(x => !x.warm).length}`}`;
-  }
-  return 'Última série feita';
-}
-function lockRestPlaying() { return !!(restAudio && restAudioUrl && !restAudio.paused && !restAudio.ended); }
-function lockRestStart() {
-  const a = S.active;
-  if (!S.settings.lockTimer || !a || !a.rest) return;
-  const left = (a.rest.end - Date.now()) / 1000;
-  if (left <= 0.5) { lockRestStop(); return; }
-  lockRestStop();
-  if (!restAudio) {
-    restAudio = new Audio();
-    restAudio.addEventListener('ended', () => lockRestStop());
-  }
-  restAudioUrl = URL.createObjectURL(restWav(left, S.settings.sound));
-  restAudio.src = restAudioUrl;
-  const p = restAudio.play();
-  if (p && p.catch) p.catch(() => {});
-  if ('mediaSession' in navigator) {
-    const ms = navigator.mediaSession;
-    try {
-      ms.metadata = new MediaMetadata({
-        title: `Descanso · ${clock(a.rest.total)}`, artist: nextSetLabel(), album: a.name,
-        artwork: [{ src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png' }]
-      });
-      ms.playbackState = 'playing';
-      ms.setPositionState({ duration: left + ALARM_SECS, playbackRate: 1, position: 0 });
-    } catch (e) { /* navegador sem suporte completo */ }
-    const set = (action, fn) => { try { ms.setActionHandler(action, fn); } catch (e) { /* ação não suportada */ } };
-    set('pause', () => ACT.restSkip());
-    set('nexttrack', () => ACT.restSkip());
-    set('seekforward', () => ACT.restAdd({ dataset: { d: 15 } }));
-    set('seekbackward', () => ACT.restAdd({ dataset: { d: -15 } }));
-  }
-}
-function lockRestStop() {
-  if (restAudio) { restAudio.pause(); restAudio.removeAttribute('src'); restAudio.load(); }
-  if (restAudioUrl) { URL.revokeObjectURL(restAudioUrl); restAudioUrl = null; }
-  if ('mediaSession' in navigator) {
-    try { navigator.mediaSession.metadata = null; navigator.mediaSession.playbackState = 'none'; } catch (e) { /* ignora */ }
-  }
+function iosTimerHelp() {
+  openSheet(`${sheetHead('Timer do iPhone')}<div class="sheet-body">
+    <p class="muted" style="margin:0 0 14px">Ao terminar uma série, o app usa o <b>Atalhos</b> para iniciar o <b>Timer do relógio</b> com o tempo de descanso. É o timer de verdade do iPhone: aparece na tela bloqueada e na Dynamic Island e toca o alarme do relógio.</p>
+    <div class="look-label">Configure uma vez</div>
+    <ol class="steps">
+      <li>Abra o app <b>Atalhos</b> e toque em <b>+</b> para criar um atalho.</li>
+      <li>Toque em <b>Adicionar Ação</b>, busque <b>Iniciar Timer</b> (do Relógio) e adicione.</li>
+      <li>Toque na duração, escolha <b>Entrada do Atalho</b> e mude a unidade para <b>segundos</b>.</li>
+      <li>Toque no nome no topo, renomeie para <b data-ios-name>${esc(S.settings.timerShortcut || 'Descanso Ficha')}</b> e toque em OK.</li>
+    </ol>
+    <label class="field"><span>Nome do atalho</span>
+      <input class="input" data-ios-shortcut value="${esc(S.settings.timerShortcut || '')}" placeholder="Descanso Ficha" autocapitalize="words" autocomplete="off"></label>
+    <p class="small muted" style="margin:4px 0 0;line-height:1.5">O iPhone abre o Atalhos por um instante; para voltar, toque em <b>◀</b> no canto superior esquerdo. Se ele perguntar se pode abrir o Atalhos, toque em <b>Abrir</b>. Os botões −15, +15 e Pular mudam só o descanso do app — toque no tempo do descanso para enviar o novo tempo ao iPhone.</p>
+  </div>
+  <div class="sheet-foot stack">
+    <button class="btn block primary" data-act="iosTimerTest">Testar com 10 segundos</button>
+    <button class="btn block" data-act="iosTimerCreate">Abrir o Atalhos para criar</button>
+  </div>`);
 }
 
 function finishWorkout() {
@@ -1226,8 +1177,9 @@ function viewAjustes() {
         <span class="switch"><input type="checkbox" data-setting="sound" ${S.settings.sound ? 'checked' : ''}><i></i></span></label>
       <label class="row"><div class="grow"><div class="name">Manter a tela ligada no treino</div><div class="sub wrap">A tela não apaga sozinha enquanto há um treino em andamento</div></div>
         <span class="switch"><input type="checkbox" data-setting="keepAwake" ${S.settings.keepAwake ? 'checked' : ''}><i></i></span></label>
-      <label class="row"><div class="grow"><div class="name">Descanso na tela bloqueada</div><div class="sub wrap">Mostra o tempo na tela bloqueada e na Dynamic Island (como “Tocando agora”) e toca o alarme com o iPhone bloqueado. Pausa a música de outros apps durante o descanso.</div></div>
-        <span class="switch"><input type="checkbox" data-setting="lockTimer" ${S.settings.lockTimer ? 'checked' : ''}><i></i></span></label>
+      <label class="row"><div class="grow"><div class="name">Usar o Timer do iPhone</div><div class="sub wrap">Ao terminar uma série, inicia o Timer do relógio pelo app Atalhos: aparece na tela bloqueada e na Dynamic Island, com o alarme do iPhone</div></div>
+        <span class="switch"><input type="checkbox" data-setting="iosTimer" ${S.settings.iosTimer ? 'checked' : ''}><i></i></span></label>
+      <button class="row" data-act="iosTimerHelp"><div class="grow"><div class="name">Configurar o Timer do iPhone</div><div class="sub">Atalho: “${esc(S.settings.timerShortcut || 'Descanso Ficha')}”</div></div>${I.chev}</button>
     </div>
 
     ${'caches' in window ? `<h2 class="section">Fotos dos exercícios</h2>
@@ -1262,7 +1214,7 @@ function viewAjustes() {
       <span class="muted">O app abre em tela cheia, funciona offline e mantém seus dados.</span></div>`}
 
     <div style="text-align:center;margin-top:22px"><button class="link-btn" data-act="checkUpdate">Procurar atualização</button></div>
-    <p class="small muted" style="text-align:center;margin-top:6px">Ficha · versão 1.5<br>
+    <p class="small muted" style="text-align:center;margin-top:6px">Ficha · versão 1.6<br>
       Fotos e músculos dos exercícios: <a href="https://github.com/yuhonas/free-exercise-db" target="_blank" rel="noopener" style="text-decoration:underline">free-exercise-db</a> (domínio público)<br>
       Desenho do mapa muscular: <a href="https://github.com/GV79/react-body-highlighter" target="_blank" rel="noopener" style="text-decoration:underline">react-body-highlighter</a> (MIT)</p>`;
 }
@@ -1311,7 +1263,9 @@ function renderDock() {
     const left = (a.rest.end - Date.now()) / 1000, C = 2 * Math.PI * 19;
     html += `<div class="dock-bar rest">
       <svg class="ring" viewBox="0 0 44 44"><circle class="bg" cx="22" cy="22" r="19"/><circle class="fg" cx="22" cy="22" r="19" stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - left / a.rest.total)}" data-ring="${C}"/></svg>
-      <div class="grow"><div class="lbl">Descanso</div><div class="big num" data-rest>${clock(left)}</div></div>
+      ${S.settings.iosTimer
+        ? `<button class="grow" data-act="iosTimerSync" aria-label="Enviar o tempo ao Timer do iPhone"><div class="lbl">Descanso ↻</div><div class="big num" data-rest>${clock(left)}</div></button>`
+        : `<div class="grow"><div class="lbl">Descanso</div><div class="big num" data-rest>${clock(left)}</div></div>`}
       <button class="btn sm" data-act="restAdd" data-d="-15">−15</button>
       <button class="btn sm" data-act="restAdd" data-d="15">+15</button>
       <button class="btn sm" data-act="restSkip">Pular</button></div>`;
@@ -1332,7 +1286,7 @@ function tick() {
     const left = (a.rest.end - now) / 1000;
     if (left <= 0) {
       a.rest = null; save(); renderDock();
-      if (!lockRestPlaying()) beep();
+      if (!S.settings.iosTimer) beep(); // com o Timer do iPhone, quem toca é o relógio
       toast('Descanso terminado — próxima série!');
     } else {
       const el = $('[data-rest]');
@@ -1639,9 +1593,16 @@ const ACT = {
     r.end += d; r.total = Math.max(1, r.total + d / 1000);
     if (r.end <= Date.now()) S.active.rest = null;
     save(); renderDock();
-    if (S.active.rest) lockRestStart(); else lockRestStop();
+    if (S.settings.iosTimer && S.active.rest) toast('Toque no tempo para atualizar o Timer do iPhone');
   },
-  restSkip: () => { if (S.active) { S.active.rest = null; save(); renderDock(); } lockRestStop(); },
+  restSkip: () => { if (S.active) { S.active.rest = null; save(); renderDock(); } },
+  iosTimerSync: () => {
+    const r = S.active && S.active.rest;
+    if (r && r.end > Date.now()) iosTimerRun((r.end - Date.now()) / 1000);
+  },
+  iosTimerHelp: () => iosTimerHelp(),
+  iosTimerTest: () => iosTimerRun(10),
+  iosTimerCreate: () => { location.href = 'shortcuts://create-shortcut'; },
 
   // Execução (foto / vídeo)
   howTo: el => openHowTo(el.dataset.id, { evo: true }),
@@ -1757,6 +1718,9 @@ document.addEventListener('input', e => {
     S.active.notes = t.value; save();
   } else if (t.id === 'exq') {
     exQ = t.value; $('#exlist').innerHTML = exList();
+  } else if (t.hasAttribute('data-ios-shortcut')) {
+    S.settings.timerShortcut = t.value.trim(); save();
+    const b = $('[data-ios-name]'); if (b) b.textContent = S.settings.timerShortcut || 'Descanso Ficha';
   } else if (t.dataset.pf) {
     if (typeof onProfileInput === 'function') onProfileInput(t);
   } else if (t.id === 'pickq') {
@@ -1769,10 +1733,7 @@ document.addEventListener('change', e => {
   else if (t.dataset.setting === 'sound') { S.settings.sound = t.checked; save(); if (t.checked) { unlockAudio(); beep(); } }
   else if (t.dataset.setting === 'glass') { S.settings.glass = t.checked; save(); applyLook(); }
   else if (t.dataset.setting === 'keepAwake') { S.settings.keepAwake = t.checked; save(); syncWakeLock(); }
-  else if (t.dataset.setting === 'lockTimer') {
-    S.settings.lockTimer = t.checked; save();
-    if (t.checked) { lockRestStart(); toast('Inicie um descanso e bloqueie a tela para ver o tempo'); } else lockRestStop();
-  }
+  else if (t.dataset.setting === 'iosTimer') { S.settings.iosTimer = t.checked; save(); if (t.checked) iosTimerHelp(); }
   else if (t.hasAttribute('data-pactive')) {
     const pr = S.programs.find(x => x.id === location.hash.split('/')[2]);
     if (pr) { pr.active = t.checked; save(); rerender(); }
