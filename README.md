@@ -7,7 +7,7 @@ Funciona no iPhone pela Tela de Início, offline, sem App Store, sem Mac e sem c
 
 - **Catálogo com ~900 exercícios** (em Fichas → Exercícios) em 15 grupos (musculação, funcional/LPO, cardio, alongamento e mobilidade), com busca em português ou inglês e filtro por grupo; crie exercícios personalizados.
 - **Mapa muscular**: cada exercício mostra um desenho do corpo (frente e costas) com os músculos principais em destaque e os secundários mais claros.
-- **Execução de cada exercício**: foto animada da posição inicial → final (873 exercícios), músculos trabalhados, atalho para vídeos no YouTube e opção de salvar o link do seu próprio vídeo (ex.: enviado pelo personal). Toque na miniatura em qualquer lista, ficha ou no treino.
+- **Execução de cada exercício**: foto animada da posição inicial → final (873 exercícios), músculos trabalhados, atalho para vídeos no YouTube e opção de salvar o link do seu próprio vídeo (ex.: enviado pelo personal). Na ficha e no treino, cada exercício aparece com uma foto grande da execução, alternando a posição inicial e a final; toque nela (ou na miniatura das listas) para abrir a execução completa.
 - **Programas e fichas**: um programa agrupa várias fichas (ex.: “Meu treino” → Push, Pull, Legs). Em cada ficha você escolhe dias da semana, séries, repetições, descanso e observações. Programas podem ser pausados; sem dias fixos, a tela Hoje sugere a próxima ficha na ordem (A → B → C…).
 - **Modelos prontos**: 14 programas para adicionar e ajustar — ABC, ABCD, ABCDE, Push/Pull/Legs, Upper/Lower, PHUL, Arnold split, iniciante, foco em glúteos, só halteres, em casa sem equipamento, funcional, alongamento/mobilidade e abdômen.
 - **Assistente de treino**: você informa objetivo, experiência, dias por semana, tempo por treino, local, peso, altura, idade, grupos prioritários e restrições (joelho, lombar, ombro, punho, quadril, sem impacto, pressão alta) e recebe 3 opções de programa para escolher, com a explicação de cada uma.
@@ -89,7 +89,7 @@ No Chrome/Firefox use o modo de dispositivo móvel (F12 → ícone de celular) p
 
 ## Atualizar o app
 
-Edite os arquivos, aumente a versão em `sw.js` (`const CACHE = 'ficha-v20'`) e faça `git push`.
+Edite os arquivos, aumente a versão em `sw.js` (`const CACHE = 'ficha-v21'`) e faça `git push`.
 O app procura a versão nova sozinho sempre que é aberto (com internet) e recarrega uma vez quando encontra. Se quiser forçar, use **Ajustes → Procurar atualização**. Os dados não são apagados.
 
 ## Estrutura

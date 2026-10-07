@@ -443,6 +443,21 @@ body.in-workout #toast { top: calc(var(--safe-t) + 96px); }
 .thumb-btn .thumb { width: 60px; height: 40px; border-radius: 10px; }
 .thumb-btn:active { opacity: .7; }
 .ex-card .ex-title .thumb-btn { margin-top: 1px; }
+/* Foto grande da execução: quadrada, alterna entre a posição inicial e a final */
+.xpic { position: relative; flex: none; display: grid; place-items: center; width: 96px; height: 96px; border-radius: 20px; overflow: hidden; background: var(--surface-2); }
+.xpic svg { width: 30px; height: 30px; fill: none; stroke: var(--faint); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.xpic img { position: absolute; top: 0; left: -25%; width: auto; height: 100%; max-width: none; }
+.xpic img.f2 { left: -175%; opacity: 0; animation: xpic-swap 3.2s var(--d, 0s) infinite; }
+.xpic.none img { display: none; }
+@keyframes xpic-swap { 0%, 42% { opacity: 0; } 50%, 92% { opacity: 1; } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .xpic img.f2 { animation: none; } }
+.thumb-btn:has(.xpic) { border-radius: 20px; }
+.ex-card .ex-title { align-items: center; gap: 12px; }
+.ex-card .ex-title > .icon-btn { align-self: flex-start; }
+.ex-card .ex-title .name { font-size: 18px; line-height: 1.25; }
+.item-head:has(.xpic) { align-items: center; gap: 12px; }
+.item-head:has(.xpic) .item-tools { flex-direction: column; margin: -4px -8px -4px 0; }
+.item-head:has(.xpic) .item-tools .icon-btn { width: 34px; height: 30px; }
 
 .pick-wrap { position: relative; }
 .pick-info {
