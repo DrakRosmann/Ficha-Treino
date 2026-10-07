@@ -33,6 +33,7 @@ Funciona no iPhone pela Tela de Início, offline, sem App Store, sem Mac e sem c
   - **Código de barras** pelo Open Food Facts (a câmera lê o código onde o navegador permite; no iPhone, digite os números ou use a foto do rótulo).
   - **Água**, resumo dos últimos 7 dias e um card na tela Hoje.
 - **Corpo**: registre peso, composição corporal (gordura, massa muscular, água, gordura visceral, massa óssea, metabolismo basal) e medidas (pescoço, ombros, peito, braço, antebraço, cintura, abdômen, quadril, coxa, panturrilha). Mostra resumo com variação desde o início, gráficos por período (com meta de peso), massa magra, IMC, relação cintura/quadril, estimativa de gordura pelas medidas (método da Marinha dos EUA) e um mapa dos músculos treinados nos últimos 7 dias.
+- **Fotos do progresso** (aba Corpo): fotos de frente, de lado e de costas por data, tiradas pela **câmera com guia** (mostra a foto anterior transparente por cima para você se posicionar igual, com grade e timer de 3 ou 10 s) ou escolhidas da galeria. Galeria por pose, **comparação antes/depois** deslizando ou lado a lado, com a variação de peso, gordura, cintura e braço entre as datas. As fotos ficam só no aparelho (IndexedDB); o backup pergunta se deve incluí-las.
 - **Histórico**: mapa de frequência, volume, duração, recordes pessoais (PR) detectados automaticamente.
   - **Séries por músculo**: quantas séries cada grupo muscular fez na semana (esta semana, semana passada ou média de 4 semanas), comparadas com a faixa de 10 a 20 séries usada nos estudos de hipertrofia. Músculos secundários contam meia série.
 - **Evolução por exercício**: gráfico de carga máxima, 1RM estimado ou volume, e a sugestão para o próximo treino.
@@ -78,7 +79,7 @@ No Chrome/Firefox use o modo de dispositivo móvel (F12 → ícone de celular) p
 
 ## Atualizar o app
 
-Edite os arquivos, aumente a versão em `sw.js` (`const CACHE = 'ficha-v12'`) e faça `git push`.
+Edite os arquivos, aumente a versão em `sw.js` (`const CACHE = 'ficha-v13'`) e faça `git push`.
 O app procura a versão nova sozinho sempre que é aberto (com internet) e recarrega uma vez quando encontra. Se quiser forçar, use **Ajustes → Procurar atualização**. Os dados não são apagados.
 
 ## Estrutura
@@ -93,6 +94,7 @@ O app procura a versão nova sozinho sempre que é aberto (com internet) e recar
 | `body.js` | Aba Corpo (medidas, composição corporal, gráficos) e mapa muscular |
 | `tools.js` | Progressão automática, séries por músculo e calculadoras (anilhas, aquecimento, 1RM) |
 | `nutrition.js` | Aba Dieta: registro, metas, gasto adaptativo, água, IA e código de barras |
+| `photos.js` | Fotos do progresso: armazenamento no aparelho, câmera com guia, galeria e comparação |
 | `foods.js` | Banco de alimentos (TACO + itens comuns de academia), valores por 100 g |
 | `assistant.js` | Assistente de treino: regras de montagem (padrões de movimento, restrições, séries por objetivo) e integração com o Claude |
 | `vendor/anthropic-sdk.mjs` | SDK oficial da Anthropic empacotado para o navegador (carregado só quando a IA é usada) |

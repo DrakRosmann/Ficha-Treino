@@ -220,6 +220,7 @@ function viewCorpo() {
     }
   }
 
+  if (typeof photosCorpoHTML === 'function') html += photosCorpoHTML();
   html += `<h2 class="section">Músculos treinados <span class="small" style="text-transform:none;letter-spacing:0">últimos 7 dias</span></h2>${muscleLoadHTML(7)}`;
 
   if (all.length) {
