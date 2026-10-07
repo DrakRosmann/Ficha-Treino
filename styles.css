@@ -259,6 +259,35 @@ select.input { background-image: linear-gradient(45deg, transparent 50%, var(--m
 .sets tr.done .check svg { stroke: var(--accent-ink); }
 .sets tr.done .setno { background: var(--accent-soft); color: var(--accent-text); }
 .set-actions { display: flex; gap: 8px; padding: 2px 3px 2px; }
+/* Tipos de série e RIR */
+.sets .setno.drop { color: var(--accent-text); }
+.sets .setno.fail { color: var(--danger); }
+#sheet .row .setno { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; background: var(--surface-2); font-size: 13px; font-weight: 800; color: var(--muted); flex: none; }
+#sheet .row .setno.warm { color: var(--gold); }
+#sheet .row .setno.drop { color: var(--accent-text); }
+#sheet .row .setno.fail { color: var(--danger); }
+.th-btn { border: 0; background: none; padding: 0; font: inherit; color: inherit; letter-spacing: inherit; text-transform: inherit; text-decoration: underline dotted; text-underline-offset: 3px; }
+.sets td.rirc { width: 44px; }
+.sets.has-rir td.prev { width: 21%; font-size: 12px; }
+.sets select.rir {
+  width: 100%; min-width: 0; height: 40px; border-radius: 10px; border: 0; padding: 0;
+  background: var(--surface-2); color: var(--text); font-size: 15px; font-weight: 700; text-align: center; text-align-last: center;
+  -webkit-appearance: none; appearance: none; outline: none;
+}
+.sets select.rir:focus { box-shadow: inset 0 0 0 2px var(--accent-text); }
+.sets tr.done select.rir { background: var(--accent-soft); }
+.set-pills span.drop i { color: var(--accent-text); }
+.set-pills span.fail i { color: var(--danger); }
+.set-pills small { font-size: 11px; color: var(--muted); font-weight: 600; }
+/* Sugestão da progressão automática */
+.sugg { display: flex; flex-direction: column; gap: 2px; margin: 10px 4px 2px; padding: 9px 12px; border-radius: 12px; background: var(--surface-2); font-size: 13px; line-height: 1.35; }
+.sugg b { font-size: 14px; font-weight: 700; }
+.sugg span { color: var(--muted); }
+.sugg.up { background: var(--accent-soft); }
+.sugg.up b { color: var(--accent-text); }
+.sugg.down b { color: var(--gold); }
+.sugg.first b { color: var(--muted); }
+.list + .sugg, .sugg + .btn-row { margin-left: 0; margin-right: 0; }
 .set-actions .btn { flex: 1; min-height: 38px; font-size: 14px; background: var(--surface-2); }
 
 /* ===== Dock (treino em andamento / descanso) ===== */
@@ -758,7 +787,7 @@ body.in-workout #toast { top: calc(var(--safe-t) + 96px); }
 :root[data-material] .search .input { border-radius: 999px; background-color: var(--surface-2); box-shadow: none; min-height: 52px; padding-left: 46px; }
 :root[data-material] .search svg { left: 17px; top: 17px; }
 :root[data-material] .row select.input, :root[data-material] .prog-pick .input { border-radius: 999px; background-color: transparent; box-shadow: inset 0 0 0 1px var(--faint); }
-:root[data-material] .sets input, :root[data-material] .sets .check { border-radius: 12px; }
+:root[data-material] .sets input, :root[data-material] .sets .check, :root[data-material] .sets select.rir { border-radius: 12px; }
 
 /* Interruptor do Material 3 */
 :root[data-material] .switch { width: 52px; height: 32px; }
@@ -800,3 +829,57 @@ body.in-workout #toast { top: calc(var(--safe-t) + 96px); }
 .ripple { position: absolute; border-radius: 50%; pointer-events: none; background: currentColor; opacity: 0; transform: scale(0); animation: ripple .6s cubic-bezier(.2, 0, 0, 1); }
 @keyframes ripple { 0% { transform: scale(0); opacity: .18; } 60% { opacity: .14; } 100% { transform: scale(1); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .ripple { display: none; } }
+
+/* ===== Lembrete de backup ===== */
+.backup-card .bk-row { display: flex; gap: 12px; align-items: flex-start; }
+.backup-card .bk-ic { flex: none; width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent-text); }
+.backup-card .bk-ic svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.backup-card .grow { flex: 1; min-width: 0; }
+.backup-card b { display: block; margin-bottom: 2px; }
+
+/* ===== Séries por músculo ===== */
+.card.vol { padding: 12px 16px 14px; }
+.vrow { display: grid; grid-template-columns: 92px 1fr 34px; align-items: center; gap: 10px; padding: 5px 0; }
+.vname { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vnum { font-size: 14px; font-weight: 700; text-align: right; }
+.vbar { position: relative; height: 10px; border-radius: 5px; background: var(--surface-2); overflow: hidden; }
+.vbar i { position: absolute; top: 0; bottom: 0; background: color-mix(in srgb, var(--accent-text) 9%, transparent); border-left: 2px solid color-mix(in srgb, var(--accent-text) 55%, transparent); border-right: 2px solid color-mix(in srgb, var(--accent-text) 55%, transparent); }
+.vbar b { position: absolute; left: 0; top: 2px; bottom: 2px; border-radius: 4px; background: var(--muted); }
+.vbar b.ok { background: var(--accent); }
+.vbar b.high { background: var(--gold); }
+.vlegend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 10px; font-size: 12px; color: var(--muted); font-weight: 600; }
+.vlegend span { display: inline-flex; align-items: center; gap: 6px; }
+.vlegend i { width: 12px; height: 8px; border-radius: 3px; background: var(--faint); }
+.vlegend i.zone { background: color-mix(in srgb, var(--accent-text) 9%, transparent); border-left: 2px solid color-mix(in srgb, var(--accent-text) 55%, transparent); border-right: 2px solid color-mix(in srgb, var(--accent-text) 55%, transparent); border-radius: 0; }
+.vlegend i.low { background: var(--muted); }
+.vlegend i.high { background: var(--gold); }
+
+/* ===== Calculadoras ===== */
+.calc-in { display: flex; gap: 8px; align-items: center; }
+.calc-in .input { text-align: center; font-size: 20px; font-weight: 700; min-width: 0; }
+.calc-in .btn { flex: none; width: 48px; min-height: 48px; padding: 0; font-size: 22px; }
+.calc-out { margin-top: 16px; }
+.calc-big { display: flex; flex-direction: column; align-items: center; gap: 2px; margin: 4px 0 10px; text-align: center; }
+.calc-big b { font-size: 24px; font-weight: 800; letter-spacing: -.01em; }
+.calc-list .kv small { font-weight: 600; margin-left: 4px; }
+.barbell { display: flex; align-items: center; justify-content: flex-start; height: 96px; margin: 0 auto 6px; max-width: 320px; padding: 0 8px; }
+.barbell .sleeve { flex: none; width: 10px; height: 14px; border-radius: 3px; background: var(--faint); }
+.barbell i { flex: none; width: var(--pw); height: var(--ph); margin-right: 2px; border-radius: 3px; background: var(--pc); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .25); }
+.barbell .collar { flex: none; width: 8px; height: 22px; border-radius: 2px; background: var(--muted); margin-right: 0; }
+.barbell .shaft { flex: 1; height: 10px; border-radius: 0 5px 5px 0; background: var(--faint); font-size: 10px; font-weight: 700; color: var(--bg); line-height: 10px; text-align: center; overflow: hidden; }
+/* Larguras fixas das colunas do treino (a coluna "Anterior" corta com reticências) */
+.sets { table-layout: fixed; }
+.sets col.c-no { width: 38px; }
+.sets col.c-prev { width: 25%; }
+.sets col.c-rir { width: 46px; }
+.sets col.c-ok { width: 48px; }
+.sets.has-rir col.c-prev { width: 22%; }
+.sets td.prev, .sets th { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 359px) {
+  .sets.has-rir col.c-prev { width: 18%; }
+  .sets.has-rir td.prev { font-size: 11px; }
+  .sets th { font-size: 10px; letter-spacing: 0; padding: 0 2px; }
+  .sets col.c-rir { width: 40px; }
+  .sets col.c-ok { width: 44px; }
+  .sets.has-rir input { font-size: 15px; }
+}

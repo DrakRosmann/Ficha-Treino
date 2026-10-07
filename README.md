@@ -19,11 +19,17 @@ Funciona no iPhone pela Tela de Início, offline, sem App Store, sem Mac e sem c
   - **Material You**: no estilo do Android. As cores tonais (fundo, cartões, botões e contêineres) são geradas a partir da cor de destaque, como no Material 3. Tem cantos arredondados, botões em cápsula, barra de navegação com indicador, interruptores e campos do Material, efeito de toque e a fonte Google Sans Flex.
 - **Hoje**: mostra a ficha do dia, a semana com dias planejados/treinados e estatísticas.
 - **Timer do iPhone**: opção de usar o Timer do relógio do iPhone no descanso. Ao terminar uma série, o app chama um atalho do app **Atalhos** (criado uma vez, com a ação “Iniciar Timer”), e o timer de verdade aparece na tela bloqueada e na Dynamic Island, com o alarme do iPhone. O passo a passo está em **Ajustes → Configurar o Timer do iPhone**. Também dá para manter a tela ligada durante o treino. (Um app da web não pode criar Live Activities próprias; isso só existe em apps nativos da App Store.)
-- **Modo treino**: marque cada série, veja o que fez no último treino, cargas pré-preenchidas, séries de aquecimento, cronômetro de descanso com aviso sonoro, adicionar/trocar/reordenar exercícios no meio do treino.
+- **Modo treino**: marque cada série, veja o que fez no último treino, cronômetro de descanso com aviso sonoro, adicionar/trocar/reordenar exercícios no meio do treino.
+  - **Progressão automática**: em cada exercício, o app sugere a carga e as repetições de hoje com base no último treino e na faixa da ficha (ex.: 8–12). É a dupla progressão: fez o topo da faixa em todas as séries → sobe a carga; ficou dentro da faixa → +1 rep; ficou abaixo da faixa duas vezes seguidas → reduz ~10%. Os campos já vêm com a sugestão.
+  - **RIR** (repetições na reserva) opcional em cada série; quando registrado, a progressão ajusta o passo.
+  - **Tipos de série** (toque no número da série): normal, aquecimento, drop set (sem descanso antes e com carga sugerida ~20% menor) e até a falha.
+  - **Aquecimento automático**: séries leves calculadas pela carga de trabalho (menu ⋯ do exercício).
 - **Corpo**: registre peso, composição corporal (gordura, massa muscular, água, gordura visceral, massa óssea, metabolismo basal) e medidas (pescoço, ombros, peito, braço, antebraço, cintura, abdômen, quadril, coxa, panturrilha). Mostra resumo com variação desde o início, gráficos por período (com meta de peso), massa magra, IMC, relação cintura/quadril, estimativa de gordura pelas medidas (método da Marinha dos EUA) e um mapa dos músculos treinados nos últimos 7 dias.
 - **Histórico**: mapa de frequência, volume, duração, recordes pessoais (PR) detectados automaticamente.
-- **Evolução por exercício**: gráfico de carga máxima, 1RM estimado ou volume.
-- **Backup**: exportar/importar um arquivo `.json` (vai para o app Arquivos/iCloud).
+  - **Séries por músculo**: quantas séries cada grupo muscular fez na semana (esta semana, semana passada ou média de 4 semanas), comparadas com a faixa de 10 a 20 séries usada nos estudos de hipertrofia. Músculos secundários contam meia série.
+- **Evolução por exercício**: gráfico de carga máxima, 1RM estimado ou volume, e a sugestão para o próximo treino.
+- **Calculadoras** (Ajustes → Treino, menu do exercício ou página do exercício): anilhas por lado (barra de 20, 15, 10 kg ou sem barra, com as anilhas que a sua academia tem), aquecimento e 1RM com a tabela de cargas por repetição.
+- **Backup e segurança dos dados**: exportar/importar um arquivo `.json` (vai para o app Arquivos/iCloud). O app pede ao navegador para não apagar os dados quando faltar espaço, lembra de fazer backup (na tela Hoje e no fim do treino, quando há 3 ou mais treinos sem backup há mais de uma semana) e guarda uma cópia antes de importar, para dar para desfazer.
 - **Fotos offline**: cada foto fica salva depois que aparece uma vez; em **Ajustes → Baixar fotos para usar offline** dá para baixar todas de uma vez (~19 MB, use no Wi-Fi).
 
 Tipos de registro: carga × reps, peso corporal (+kg opcional) × reps, tempo em segundos (prancha) e cardio (min / km).
@@ -64,7 +70,7 @@ No Chrome/Firefox use o modo de dispositivo móvel (F12 → ícone de celular) p
 
 ## Atualizar o app
 
-Edite os arquivos, aumente a versão em `sw.js` (`const CACHE = 'ficha-v10'`) e faça `git push`.
+Edite os arquivos, aumente a versão em `sw.js` (`const CACHE = 'ficha-v11'`) e faça `git push`.
 O app procura a versão nova sozinho sempre que é aberto (com internet) e recarrega uma vez quando encontra. Se quiser forçar, use **Ajustes → Procurar atualização**. Os dados não são apagados.
 
 ## Estrutura
@@ -77,6 +83,7 @@ O app procura a versão nova sozinho sempre que é aberto (com internet) e recar
 | `exercises.js` | Catálogo de exercícios (nome, grupo, equipamento, tipo, foto, músculos) — edite à vontade |
 | `templates.js` | Modelos de programas prontos — edite ou crie os seus |
 | `body.js` | Aba Corpo (medidas, composição corporal, gráficos) e mapa muscular |
+| `tools.js` | Progressão automática, séries por músculo e calculadoras (anilhas, aquecimento, 1RM) |
 | `assistant.js` | Assistente de treino: regras de montagem (padrões de movimento, restrições, séries por objetivo) e integração com o Claude |
 | `vendor/anthropic-sdk.mjs` | SDK oficial da Anthropic empacotado para o navegador (carregado só quando a IA é usada) |
 | `fonts/` | Fonte Google Sans Flex do estilo Material You (só o alfabeto latino) |

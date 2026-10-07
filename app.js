@@ -86,7 +86,8 @@ const I = {
 /* ================= Estado ================= */
 function blank() {
   return {
-    v: 1, settings: { rest: 90, sound: true, theme: 'auto', accent: 'limao', style: 'auto', styleAuto: true, keepAwake: true, iosTimer: false, timerShortcut: 'Descanso Ficha' },
+    v: 1, settings: { rest: 90, sound: true, theme: 'auto', accent: 'limao', style: 'auto', styleAuto: true, keepAwake: true, iosTimer: false, timerShortcut: 'Descanso Ficha',
+      progression: true, rir: true, bar: 20, lastBackup: 0, backupSnooze: 0 },
     custom: [], programs: [], routines: [], sessions: [], active: null, videos: {}, profile: null, body: [], bodyGoal: {}
   };
 }
@@ -247,6 +248,9 @@ function exHistory(exId) {
 function lastSets(exId) {
   const h = exHistory(exId);
   return h.length ? h[h.length - 1].sets.filter(isWork) : [];
+}
+function setPill(kind, s, mark) {
+  return `<span class="num ${s.t || ''}" ${s.warm ? 'style="opacity:.6"' : ''}><i>${mark}</i>${fmtSet(kind, s)}${s.rir != null ? ` <small>RIR ${s.rir >= 5 ? '5+' : s.rir}</small>` : ''}</span>`;
 }
 function fmtSet(kind, s) {
   if (!s) return '—';
@@ -685,6 +689,13 @@ function viewHoje() {
     html += `<div class="btn-row" style="margin-top:12px"><button class="btn" data-act="startEmpty">${I.plus}Treino livre</button><a class="btn" href="#/fichas">${I.list}Ver fichas</a></div>`;
   }
 
+  if (!S.active && backupDue()) {
+    const n = unbackedSessions();
+    html += `<div class="card backup-card"><div class="bk-row"><span class="bk-ic">${I.download}</span>
+      <div class="grow"><b>Faça um backup</b><div class="small muted">${n} treino${n > 1 ? 's' : ''} ainda não ${n > 1 ? 'estão salvos' : 'está salvo'} fora deste aparelho. Guarde o arquivo no iCloud Drive.</div></div></div>
+      <div class="btn-row" style="margin-top:12px"><button class="btn sm primary" data-act="exportData">Salvar backup</button><button class="btn sm" data-act="backupLater">Depois</button></div></div>`;
+  }
+
   const last = S.sessions[0];
   if (last) {
     html += `<h2 class="section">Último treino</h2><div class="list">
@@ -946,13 +957,26 @@ function viewExercicio(id) {
       <div class="kv"><span>Treinos com este exercício</span><b>${hist.length}</b></div>
       ${best.map(b => `<div class="kv"><span>Recorde · ${b.m.label}</span><b>${fmt(b.v)} ${b.m.unit}</b></div>`).join('')}
       <div class="kv"><span>Última vez</span><b>${relDay(hist[hist.length - 1].sess.start)}</b></div></div>`;
+    // Próximo treino: sugestão pela faixa de repetições da primeira ficha que tem o exercício
+    if (typeof suggestNext === 'function' && S.settings.progression !== false) {
+      const it = S.routines.flatMap(r => r.items).find(x => x.exId === id);
+      const sg = suggestNext(id, it ? it.reps : '');
+      if (sg && sg.type !== 'first') html += suggestionHTML(sg).replace('Hoje: ', 'Próximo treino: ');
+    }
+    if (kind === 'w' && typeof openCalc === 'function') {
+      const top = work.length ? work[work.length - 1].sets.reduce((a, b) => (b.a || 0) > (a.a || 0) ? b : a) : null;
+      html += `<div class="btn-row" style="margin:10px 0 0">
+        <button class="btn sm" data-act="calc" data-mode="plates" data-w="${top ? top.a : ''}">Anilhas</button>
+        <button class="btn sm" data-act="calc" data-mode="warm" data-w="${top ? top.a : ''}">Aquecimento</button>
+        <button class="btn sm" data-act="calc" data-mode="rm" data-w="${top ? top.a : ''}" data-r="${top ? top.b : ''}">1RM</button></div>`;
+    }
     html += `<h2 class="section">Evolução</h2>
       <div class="chips">${metrics.map(m => `<button class="chip ${m.id === metric.id ? 'on' : ''}" data-act="exMetric" data-ex="${id}" data-m="${m.id}">${m.label}</button>`).join('')}</div>
       <div class="card">${chartSVG(work.map(h => ({ t: h.t, v: metric.f(h.sets) })), metric.unit)}</div>`;
     html += `<h2 class="section">Histórico</h2><div class="card" style="padding:4px 16px">` +
       hist.slice().reverse().slice(0, 30).map(h => `<a class="sess-ex" href="#/sessao/${h.sess.id}" style="display:block">
         <div class="name" style="display:flex;justify-content:space-between"><span>${dateLong(h.sess.start)}</span>${I.chev}</div>
-        <div class="set-pills">${h.sets.map(s => `<span class="num" ${s.warm ? 'style="opacity:.6"' : ''}>${s.warm ? 'Aq · ' : ''}${fmtSet(kind, s)}</span>`).join('')}</div></a>`).join('') + '</div>';
+        <div class="set-pills">${(n => h.sets.map(s => setPill(kind, s, setMark(s) || ++n)))(0).join('')}</div></a>`).join('') + '</div>';
   }
   if (ex && ex.custom) html += `<div style="margin-top:18px"><button class="btn danger block" data-act="deleteExercise" data-id="${id}">${I.trash}Excluir exercício</button></div>`;
   return html;
@@ -1013,13 +1037,35 @@ function startFromRoutine(r) {
   startWorkout(r.name, r.id, r.items.map(it => makeActiveExercise(it.exId, it.sets, it.reps, it.rest, it.note)));
 }
 
+// Valor sugerido para um campo vazio: a progressão automática, senão o último treino, senão a série anterior
 function placeholder(ex, i, field) {
-  const last = lastSets(ex.exId);
-  const ref = last[i] || last[last.length - 1];
-  if (ref && ref[field] != null) return fmt(ref[field], 2);
+  // Drop set: ~20% menos carga que a série anterior
+  if (ex.sets[i].t === 'drop' && i > 0) {
+    const pv = ex.sets[i - 1][field] !== '' ? ex.sets[i - 1][field] : placeholder(ex, i - 1, field);
+    if (field !== 'a' || num(pv) == null || typeof loadStep !== 'function') return pv;
+    const step = loadStep(getEx(ex.exId));
+    return fmtIn(Math.max(step, roundTo(num(pv) * 0.8, step)));
+  }
+  if (!ex.sets[i].warm) {
+    const wi = ex.sets.slice(0, i).filter(x => !x.warm).length;
+    const sg = typeof suggestionFor === 'function' ? suggestionFor(ex) : null;
+    const ref = sg && sg.sets.length ? sg.sets[wi] || sg.sets[sg.sets.length - 1] : null;
+    if (ref && ref[field] != null) return fmtIn(ref[field]);
+    const last = lastSets(ex.exId), old = last[wi] || last[last.length - 1];
+    if (old && old[field] != null) return fmtIn(old[field]);
+  }
   for (let j = i - 1; j >= 0; j--) if (ex.sets[j][field] !== '') return ex.sets[j][field];
   return '';
 }
+// Tipo da série: normal (''), aquecimento, drop set ou até a falha
+const SET_TYPES = [
+  ['', 'Normal', 'Conta no volume, nos recordes e na progressão'],
+  ['warm', 'Aquecimento', 'Não conta no volume nem nos recordes', 'A'],
+  ['drop', 'Drop set', 'Reduz a carga e continua sem descanso; conta no volume', 'D'],
+  ['fail', 'Até a falha', 'Série levada até não conseguir mais nenhuma repetição', 'F']
+];
+const setType = s => s.warm ? 'warm' : s.t || '';
+const setMark = s => (SET_TYPES.find(t => t[0] === setType(s)) || [])[3];
 
 function viewTreino() {
   const a = S.active;
@@ -1046,25 +1092,30 @@ function viewTreino() {
     const K = KINDS[ex.kind];
     const last = lastSets(ex.exId);
     const allDone = ex.sets.length && ex.sets.every(s => s.done);
-    const head = `<tr><th>Série</th><th>Anterior</th><th>${K.a}</th>${K.b ? `<th>${K.b}</th>` : ''}<th>✓</th></tr>`;
-    let wn = 0;
+    const rir = S.settings.rir !== false && (ex.kind === 'w' || ex.kind === 'bw');
+    const head = `<tr><th>Série</th><th>Anterior</th><th>${K.a}</th>${K.b ? `<th>${K.b}</th>` : ''}${rir ? '<th><button class="th-btn" data-act="rirHelp">RIR</button></th>' : ''}<th>✓</th></tr>`;
+    let wn = 0, wi = 0;
     const rows = ex.sets.map((s, i) => {
-      const label = s.warm ? 'A' : String(++wn);
-      const prev = last[i] ? fmtSet(ex.kind, last[i]) : '—';
+      const ty = setType(s), label = setMark(s) || String(++wn);
+      const ref = s.warm ? null : last[wi++];
+      const prev = ref ? fmtSet(ex.kind, ref) : '—';
       const inp = f => `<input type="text" inputmode="decimal" value="${esc(s[f])}" placeholder="${esc(placeholder(ex, i, f))}" data-wf="${f}" data-x="${x}" data-s="${i}" aria-label="${f === 'a' ? K.a : K.b} da série ${label}">`;
+      const rirSel = `<select class="rir" data-rir data-x="${x}" data-s="${i}" aria-label="RIR da série ${label}">${['', 0, 1, 2, 3, 4, 5].map(v => `<option value="${v}" ${String(s.rir ?? '') === String(v) ? 'selected' : ''}>${v === '' ? '–' : v === 5 ? '5+' : v}</option>`).join('')}</select>`;
       return `<tr class="${s.done ? 'done' : ''}">
-        <td><button class="setno ${s.warm ? 'warm' : ''}" data-act="toggleWarm" data-x="${x}" data-s="${i}" aria-label="Alternar aquecimento">${label}</button></td>
+        <td><button class="setno ${ty}" data-act="setMenu" data-x="${x}" data-s="${i}" aria-label="Tipo da série ${label}">${label}</button></td>
         <td class="prev num">${prev}</td>
-        <td>${inp('a')}</td>${K.b ? `<td>${inp('b')}</td>` : ''}
+        <td>${inp('a')}</td>${K.b ? `<td>${inp('b')}</td>` : ''}${rir ? `<td class="rirc">${s.warm ? '' : rirSel}</td>` : ''}
         <td><button class="check" data-act="toggleSet" data-x="${x}" data-s="${i}" aria-label="Concluir série">${I.check}</button></td></tr>`;
     }).join('');
+    const sg = typeof suggestionFor === 'function' && !allDone ? suggestionFor(ex) : null;
     const targetTxt = [ex.sets.filter(s => !s.warm).length + ' × ' + (ex.target || '—') + (ex.kind === 's' ? 's' : ex.kind === 'c' ? ' min' : ''), `descanso ${fmtRest(ex.rest)}`].join(' · ');
     html += `<div class="ex-card ${allDone ? 'complete' : ''}">
       <div class="ex-title"><button class="thumb-btn" data-act="howTo" data-id="${ex.exId}" aria-label="Ver execução">${thumb(getEx(ex.exId))}</button>
         <div class="grow"><a class="name" href="#/exercicio/${ex.exId}">${esc(ex.name)}</a><div class="target num">${targetTxt}</div></div>
         <button class="icon-btn" data-act="exMenu" data-x="${x}" aria-label="Opções do exercício" style="margin:-8px -6px 0 0">${I.more}</button></div>
       ${ex.note ? `<div class="ex-note">${esc(ex.note)}</div>` : ''}
-      <table class="sets">${head}${rows}</table>
+      ${sg ? suggestionHTML(sg) : ''}
+      <table class="sets ${rir ? 'has-rir' : ''}"><colgroup><col class="c-no"><col class="c-prev"><col>${K.b ? '<col>' : ''}${rir ? '<col class="c-rir">' : ''}<col class="c-ok"></colgroup>${head}${rows}</table>
       <div class="set-actions">
         <button class="btn sm" data-act="addSet" data-x="${x}">${I.plus}Série</button>
         ${ex.sets.length > 1 ? `<button class="btn sm" data-act="removeSet" data-x="${x}">Remover série</button>` : ''}
@@ -1173,6 +1224,9 @@ function commitWorkout(updateRoutine) {
       sets: e.sets.filter(s => s.done).map(s => {
         const o = { a: num(s.a), b: e.kind === 's' ? null : num(s.b) };
         if (s.warm) o.warm = true;
+        if (s.t) o.t = s.t;
+        const rir = num(s.rir);
+        if (rir != null && !s.warm) o.rir = rir;
         return o;
       })
     })).filter(e => e.sets.length)
@@ -1215,7 +1269,8 @@ function showSummary(sess) {
       <div class="stat"><b class="num">${sessSetCount(sess)}</b><span>séries</span></div>
       <div class="stat"><b class="num">${vol ? fmtInt(vol) : '—'}</b><span>kg de volume</span></div></div>
     ${prs.length ? `<h2 class="section">Recordes pessoais 🎉</h2><div class="list">${prs.map(p => `<div class="kv"><span>${esc(p.name)} · ${p.label}</span><b style="color:var(--gold)">${fmt(p.value)} ${p.unit}</b></div>`).join('')}</div>` : ''}
-    </div><div class="sheet-foot"><button class="btn primary block" data-act="closeSheet">Fechar</button></div>`);
+    </div><div class="sheet-foot stack">${backupDue() ? `<button class="btn block" data-act="exportData">${I.download}Salvar backup · ${unbackedSessions()} treinos sem backup</button>` : ''}
+      <button class="btn primary block" data-act="closeSheet">Fechar</button></div>`);
 }
 
 /* ================= Tela: Histórico ================= */
@@ -1246,6 +1301,7 @@ function viewHistorico() {
       <div class="stat"><b class="num">${S.sessions.length}</b><span>treinos no total</span></div>
       <div class="stat"><b class="num">${weekVol >= 10000 ? fmt(weekVol / 1000) + 't' : fmtInt(weekVol)}</b><span>kg nesta semana</span></div>
       <div class="stat"><b class="num">${fmtDur(avgDur)}</b><span>duração média</span></div></div>`;
+  if (typeof volumeHTML === 'function') html += volumeHTML();
 
   let month = '';
   for (const s of S.sessions) {
@@ -1278,7 +1334,7 @@ function viewSessao(id) {
     let wn = 0;
     return `<a class="sess-ex" href="#/exercicio/${e.exId}" style="display:block">
       <div class="name" style="display:flex;justify-content:space-between;gap:8px"><span>${esc(exName(e.exId, e.name))}${prKeys.has(e.exId) ? ' <span class="badge gold">PR</span>' : ''}</span>${I.chev}</div>
-      <div class="set-pills">${e.sets.map(x => `<span class="num" ${x.warm ? 'style="opacity:.6"' : ''}><i>${x.warm ? 'A' : ++wn}</i>${fmtSet(e.kind, x)}</span>`).join('')}</div></a>`;
+      <div class="set-pills">${e.sets.map(x => setPill(e.kind, x, setMark(x) || ++wn)).join('')}</div></a>`;
   }).join('') + '</div>';
   if (s.notes) html += `<h2 class="section">Anotações</h2><div class="card" style="white-space:pre-wrap">${esc(s.notes)}</div>`;
   html += `<div class="stack" style="margin-top:18px"><button class="btn primary block" data-act="repeatSession" data-id="${id}">${I.play}Repetir este treino</button></div>`;
@@ -1315,6 +1371,11 @@ function viewAjustes() {
         <select class="input" style="width:auto;min-height:38px;padding:6px 34px 6px 12px" data-setting="rest">${REST_OPTIONS.filter(Boolean).map(s => `<option value="${s}" ${s === S.settings.rest ? 'selected' : ''}>${fmtRest(s)}</option>`).join('')}</select></label>
       <label class="row"><div class="grow"><div class="name">Som ao fim do descanso</div><div class="sub">Alarme quando o descanso acaba</div></div>
         <span class="switch"><input type="checkbox" data-setting="sound" ${S.settings.sound ? 'checked' : ''}><i></i></span></label>
+      <label class="row"><div class="grow"><div class="name">Sugerir carga e repetições</div><div class="sub wrap">Progressão automática: o app sugere quanto fazer em cada exercício com base no último treino</div></div>
+        <span class="switch"><input type="checkbox" data-setting="progression" ${S.settings.progression !== false ? 'checked' : ''}><i></i></span></label>
+      <label class="row"><div class="grow"><div class="name">Registrar RIR</div><div class="sub wrap">Repetições na reserva: quantas ainda sobravam ao fim da série. Opcional; deixa a progressão mais precisa</div></div>
+        <span class="switch"><input type="checkbox" data-setting="rir" ${S.settings.rir !== false ? 'checked' : ''}><i></i></span></label>
+      ${typeof openCalc === 'function' ? `<button class="row" data-act="calc" data-mode="plates"><div class="grow"><div class="name">Calculadoras</div><div class="sub">Anilhas, aquecimento e 1RM</div></div>${I.chev}</button>` : ''}
       <label class="row"><div class="grow"><div class="name">Manter a tela ligada no treino</div><div class="sub wrap">A tela não apaga sozinha enquanto há um treino em andamento</div></div>
         <span class="switch"><input type="checkbox" data-setting="keepAwake" ${S.settings.keepAwake ? 'checked' : ''}><i></i></span></label>
       <label class="row"><div class="grow"><div class="name">Usar o Timer do iPhone</div><div class="sub wrap">Ao terminar uma série, inicia o Timer do relógio pelo app Atalhos: aparece na tela bloqueada e na Dynamic Island, com o alarme do iPhone</div></div>
@@ -1338,13 +1399,15 @@ function viewAjustes() {
 
     <h2 class="section">Seus dados</h2>
     <div class="list">
-      <button class="row" data-act="exportData"><div class="grow"><div class="name">Exportar backup</div><div class="sub">Salve um arquivo .json no app Arquivos ou iCloud</div></div>${I.chev}</button>
+      <button class="row" data-act="exportData"><div class="grow"><div class="name">Exportar backup</div><div class="sub">${backupLabel()}</div></div>${I.chev}</button>
       <label class="row" style="cursor:pointer"><div class="grow"><div class="name">Importar backup</div><div class="sub">Substitui os dados atuais pelos do arquivo</div></div>${I.chev}
         <input type="file" accept="application/json,.json" id="importFile" hidden></label>
+      ${prevCopy() ? `<button class="row" data-act="undoImport"><div class="grow"><div class="name">Desfazer a última importação</div><div class="sub">Volta aos dados de antes de importar (${dateShort(prevCopy().at)})</div></div>${I.chev}</button>` : ''}
+      ${storageSafe != null ? `<div class="row"><div class="grow"><div class="name">Proteção contra limpeza automática</div><div class="sub wrap">${storageSafe ? 'Ativada: o sistema não apaga os dados do app para liberar espaço' : 'Não concedida pelo navegador: mantenha os backups em dia'}</div></div><span class="badge ${storageSafe ? 'accent' : 'gold'}">${storageSafe ? 'Ativa' : 'Sem'}</span></div>` : ''}
       <a class="row" href="#/modelos"><div class="grow"><div class="name">Modelos de treino prontos</div><div class="sub">PPL, Upper/Lower, ABC, ABCDE, em casa e mais</div></div>${I.chev}</a>
       <button class="row" data-act="wipeData"><div class="grow"><div class="name" style="color:var(--danger)">Apagar todos os dados</div></div></button>
     </div>
-    <p class="small muted" style="margin:10px 4px 0">${S.programs.length} programas · ${S.routines.length} fichas · ${S.sessions.length} treinos · ${(S.body || []).length} registros de medidas · ${S.custom.length} exercícios personalizados. Tudo fica salvo só neste aparelho — exporte um backup de vez em quando.</p>
+    <p class="small muted" style="margin:10px 4px 0">${S.programs.length} programas · ${S.routines.length} fichas · ${S.sessions.length} treinos · ${(S.body || []).length} registros de medidas · ${S.custom.length} exercícios personalizados. Tudo fica salvo só neste aparelho. Exporte um backup e guarde no iCloud Drive (app Arquivos) para não perder nada se trocar ou perder o celular.</p>
 
     ${standalone ? '' : `<h2 class="section">Instalar no iPhone</h2>
     <div class="card small" style="line-height:1.55">
@@ -1354,9 +1417,43 @@ function viewAjustes() {
       <span class="muted">O app abre em tela cheia, funciona offline e mantém seus dados.</span></div>`}
 
     <div style="text-align:center;margin-top:22px"><button class="link-btn" data-act="checkUpdate">Procurar atualização</button></div>
-    <p class="small muted" style="text-align:center;margin-top:6px">Ficha · versão 1.8<br>
+    <p class="small muted" style="text-align:center;margin-top:6px">Ficha · versão 1.9<br>
       Fotos e músculos dos exercícios: <a href="https://github.com/yuhonas/free-exercise-db" target="_blank" rel="noopener" style="text-decoration:underline">free-exercise-db</a> (domínio público)<br>
       Desenho do mapa muscular: <a href="https://github.com/GV79/react-body-highlighter" target="_blank" rel="noopener" style="text-decoration:underline">react-body-highlighter</a> (MIT)</p>`;
+}
+
+/* ================= Segurança dos dados ================= */
+// Tudo fica no aparelho: pede ao navegador para não apagar os dados quando faltar espaço,
+// lembra de fazer backup e guarda uma cópia antes de importar (para desfazer).
+const PREV_KEY = 'ficha.prev';
+let storageSafe = null; // true/false depois de perguntar ao navegador
+function protectStorage() {
+  if (!navigator.storage || !navigator.storage.persist) return;
+  navigator.storage.persisted()
+    .then(p => p || navigator.storage.persist())
+    .then(p => { storageSafe = !!p; })
+    .catch(() => { storageSafe = false; });
+}
+function unbackedSessions() { return S.sessions.filter(s => s.end > (S.settings.lastBackup || 0)).length; }
+function backupDue() {
+  return unbackedSessions() >= 3 && Date.now() - (S.settings.lastBackup || 0) > 7 * 864e5 && Date.now() > (S.settings.backupSnooze || 0);
+}
+function markBackup() {
+  S.settings.lastBackup = Date.now(); S.settings.backupSnooze = 0; save();
+  toast('Backup salvo'); if ($('#sheet').hidden) rerender();
+}
+function backupLabel() {
+  const t = S.settings.lastBackup;
+  return t ? `Último: ${relDay(t).toLowerCase()}${unbackedSessions() ? ` · ${unbackedSessions()} treino${unbackedSessions() > 1 ? 's' : ''} depois dele` : ''}` : 'Nenhum backup feito ainda';
+}
+function prevCopy() {
+  try { const d = JSON.parse(localStorage.getItem(PREV_KEY)); return d && d.data && Date.now() - d.at < 30 * 864e5 ? d : null; } catch (e) { return null; }
+}
+// Estado a partir de um backup (ou da cópia de segurança)
+function fromBackup(d) {
+  const b = blank();
+  migrate(d);
+  return { ...b, settings: { ...b.settings, ...(d.settings || {}) }, custom: d.custom || [], videos: d.videos || {}, profile: d.profile || null, body: d.body || [], bodyGoal: d.bodyGoal || {}, programs: d.programs || [], routines: d.routines, sessions: d.sessions.sort((x, y) => y.start - x.start), active: d.active || null };
 }
 
 function exportData() {
@@ -1365,14 +1462,14 @@ function exportData() {
   const name = `ficha-backup-${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}.json`;
   const file = new File([data], name, { type: 'application/json' });
   if (navigator.canShare && navigator.canShare({ files: [file] })) {
-    navigator.share({ files: [file], title: 'Backup do Ficha' }).catch(() => {});
+    navigator.share({ files: [file], title: 'Backup do Ficha' }).then(markBackup).catch(() => {});
     return;
   }
   const url = URL.createObjectURL(file);
   const a = document.createElement('a');
   a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 2000);
-  toast('Backup exportado');
+  markBackup();
 }
 function importData(file) {
   const reader = new FileReader();
@@ -1384,10 +1481,9 @@ function importData(file) {
       title: 'Importar backup?', text: `O arquivo tem ${d.routines.length} fichas e ${d.sessions.length} treinos. Os dados atuais deste aparelho serão substituídos.`,
       ok: 'Importar', danger: true,
       onOk: () => {
-        const b = blank();
-        migrate(d);
-        S = { ...b, settings: { ...b.settings, ...(d.settings || {}) }, custom: d.custom || [], videos: d.videos || {}, profile: d.profile || null, body: d.body || [], bodyGoal: d.bodyGoal || {}, programs: d.programs, routines: d.routines, sessions: d.sessions.sort((x, y) => y.start - x.start), active: d.active || null };
-        save(); applyLook(); toast('Backup importado'); go('#/hoje');
+        try { localStorage.setItem(PREV_KEY, JSON.stringify({ at: Date.now(), data: S })); } catch (e) { /* sem espaço para a cópia */ }
+        S = fromBackup(d);
+        save(); applyLook(); toast('Backup importado — dá para desfazer em Ajustes'); go('#/hoje');
       }
     });
   };
@@ -1661,13 +1757,46 @@ const ACT = {
     if (ex.kind === 'w' && s.a === '') s.a = '0';
     s.done = true;
     unlockAudio();
-    startRest(ex.rest);
+    const next = ex.sets[i + 1];
+    if (!(next && next.t === 'drop' && !next.done)) startRest(ex.rest); // drop set vem sem descanso
     save(); rerender();
   },
-  toggleWarm: el => {
-    const s = S.active.exercises[+el.dataset.x].sets[+el.dataset.s];
-    s.warm = !s.warm; save(); rerender();
-    toast(s.warm ? 'Série de aquecimento (não conta em recordes)' : 'Série normal');
+  setMenu: el => {
+    const x = +el.dataset.x, i = +el.dataset.s, ex = S.active.exercises[x], cur = setType(ex.sets[i]);
+    openSheet(`${sheetHead('Tipo de série')}<div class="sheet-body"><div class="list">${SET_TYPES.map(([v, l, d, m]) => `
+      <button class="row" data-act="setType" data-x="${x}" data-s="${i}" data-v="${v}"><span class="setno ${v}">${m || '1'}</span>
+        <div class="grow"><div class="name">${l}</div><div class="sub wrap">${d}</div></div>${cur === v ? I.check.replace('<svg', '<svg class="chev" style="stroke:var(--accent-text)"') : ''}</button>`).join('')}</div>
+      ${ex.sets.length > 1 ? `<button class="btn danger block" style="margin-top:14px" data-act="setDelete" data-x="${x}" data-s="${i}">${I.trash}Remover esta série</button>` : ''}</div>`);
+  },
+  setType: el => {
+    const s = S.active.exercises[+el.dataset.x].sets[+el.dataset.s], v = el.dataset.v;
+    s.warm = v === 'warm';
+    if (v === 'drop' || v === 'fail') s.t = v; else delete s.t;
+    if (v === 'fail' && (s.rir == null || s.rir === '')) s.rir = '0';
+    if (s.warm) delete s.rir;
+    save(); closeSheet(); rerender();
+  },
+  setDelete: el => {
+    const ex = S.active.exercises[+el.dataset.x];
+    if (ex.sets.length > 1) ex.sets.splice(+el.dataset.s, 1);
+    save(); closeSheet(); rerender();
+  },
+  rirHelp: () => openSheet(`${sheetHead('RIR: repetições na reserva')}<div class="sheet-body">
+    <p style="margin:0 0 12px;line-height:1.5">Quantas repetições você ainda conseguiria fazer ao terminar a série, com boa execução.</p>
+    <div class="list">${[['0', 'Falha: não sairia mais nenhuma'], ['1–2', 'Bem perto da falha (o ideal para hipertrofia)'], ['3–4', 'Moderado: sobrou um pouco'], ['5+', 'Leve: sobrou bastante']].map(([v, t]) => `<div class="kv"><span>${t}</span><b>${v}</b></div>`).join('')}</div>
+    <p class="small muted" style="margin:12px 2px 0;line-height:1.5">É opcional. Quando você registra, a progressão automática acerta melhor o próximo passo: se sobrou muito, ela sobe mais a carga. Dá para esconder em Ajustes → Treino.</p></div>`),
+  addWarmup: el => {
+    const x = +el.dataset.x, ex = S.active.exercises[x], g = getEx(ex.exId);
+    const i0 = ex.sets.findIndex(s => !s.warm);
+    const W = i0 < 0 ? null : num(ex.sets[i0].a) || num(placeholder(ex, i0, 'a'));
+    closeSheet();
+    if (!W) { toast('Informe a carga da primeira série'); return; }
+    const barbell = g && g.equip === 'Barra';
+    const sets = warmupSets(W, barbell ? barNow() : 0, loadStep(g));
+    if (!sets.length) { toast('Carga leve demais para aquecimento'); return; }
+    ex.sets = sets.map(w => ({ a: fmtIn(w.w), b: String(w.r), done: false, warm: true })).concat(ex.sets.filter(s => !s.warm || s.done));
+    save(); rerender();
+    toast(`${sets.length} séries de aquecimento até ${fmt(W, 2)} kg`);
   },
   addSet: el => {
     const ex = S.active.exercises[+el.dataset.x];
@@ -1688,6 +1817,8 @@ const ACT = {
       <div class="list" style="margin-top:16px">
         ${x > 0 ? `<button class="row" data-act="exMove" data-x="${x}" data-d="-1"><div class="grow name">Mover para cima</div></button>` : ''}
         ${x < S.active.exercises.length - 1 ? `<button class="row" data-act="exMove" data-x="${x}" data-d="1"><div class="grow name">Mover para baixo</div></button>` : ''}
+        ${ex.kind === 'w' && typeof warmupSets === 'function' ? `<button class="row" data-act="addWarmup" data-x="${x}"><div class="grow"><div class="name">Adicionar aquecimento</div><div class="sub">Séries leves calculadas pela carga de trabalho</div></div></button>
+        <button class="row" data-act="calc" data-mode="plates" data-w="${esc(num(ex.sets.find(s => !s.warm && !s.done)?.a) || num(placeholder(ex, Math.max(0, ex.sets.findIndex(s => !s.warm)), 'a')) || '')}"><div class="grow name">Calculadora de anilhas</div></button>` : ''}
         <button class="row" data-act="howTo" data-id="${ex.exId}"><div class="grow name">Ver execução (foto e vídeo)</div></button>
         <button class="row" data-act="exReplace" data-x="${x}"><div class="grow name">Substituir exercício</div></button>
         <a class="row" href="#/exercicio/${ex.exId}" data-act="closeSheet"><div class="grow name">Ver evolução</div></a>
@@ -1811,12 +1942,23 @@ const ACT = {
   wipeData: () => confirmSheet({
     title: 'Apagar tudo?', text: 'Fichas, histórico e exercícios personalizados serão apagados deste aparelho. Isso não pode ser desfeito.',
     ok: 'Apagar tudo', danger: true,
-    onOk: () => { S = blank(); save(); applyLook(); if (typeof aiSetKey === 'function') aiSetKey(''); toast('Dados apagados'); go('#/hoje'); }
-  })
+    onOk: () => { S = blank(); save(); localStorage.removeItem(PREV_KEY); applyLook(); if (typeof aiSetKey === 'function') aiSetKey(''); toast('Dados apagados'); go('#/hoje'); }
+  }),
+  undoImport: () => {
+    const p = prevCopy();
+    if (!p) return;
+    confirmSheet({
+      title: 'Desfazer a importação?', text: `Volta aos dados que estavam neste aparelho antes de importar (${dateShort(p.at)}): ${p.data.routines.length} fichas e ${p.data.sessions.length} treinos.`,
+      ok: 'Desfazer importação', danger: true,
+      onOk: () => { S = fromBackup(p.data); save(); localStorage.removeItem(PREV_KEY); applyLook(); toast('Dados anteriores restaurados'); go('#/hoje'); }
+    });
+  },
+  backupLater: () => { S.settings.backupSnooze = Date.now() + 3 * 864e5; save(); rerender(); }
 };
 
 if (typeof ASSIST_ACTIONS !== 'undefined') Object.assign(ACT, ASSIST_ACTIONS);
 if (typeof BODY_ACTIONS !== 'undefined') Object.assign(ACT, BODY_ACTIONS);
+if (typeof TOOLS_ACTIONS !== 'undefined') Object.assign(ACT, TOOLS_ACTIONS);
 
 function backToPicker() {
   renderPicker();
@@ -1862,6 +2004,8 @@ document.addEventListener('input', e => {
   } else if (t.hasAttribute('data-ios-shortcut')) {
     S.settings.timerShortcut = t.value.trim(); save();
     const b = $('[data-ios-name]'); if (b) b.textContent = S.settings.timerShortcut || 'Descanso Ficha';
+  } else if (t.dataset.calc) {
+    if (typeof calcInput === 'function') calcInput(t);
   } else if (t.dataset.pf) {
     if (typeof onProfileInput === 'function') onProfileInput(t);
   } else if (t.id === 'pickq') {
@@ -1874,6 +2018,11 @@ document.addEventListener('change', e => {
   else if (t.dataset.setting === 'sound') { S.settings.sound = t.checked; save(); if (t.checked) { unlockAudio(); beep(); } }
   else if (t.dataset.setting === 'keepAwake') { S.settings.keepAwake = t.checked; save(); syncWakeLock(); }
   else if (t.dataset.setting === 'iosTimer') { S.settings.iosTimer = t.checked; save(); if (t.checked) iosTimerHelp(); }
+  else if (t.dataset.setting === 'progression' || t.dataset.setting === 'rir') { S.settings[t.dataset.setting] = t.checked; save(); }
+  else if (t.hasAttribute('data-rir') && S.active) {
+    const s = S.active.exercises[+t.dataset.x].sets[+t.dataset.s];
+    s.rir = t.value; save();
+  }
   else if (t.hasAttribute('data-pactive')) {
     const pr = S.programs.find(x => x.id === location.hash.split('/')[2]);
     if (pr) { pr.active = t.checked; save(); rerender(); }
@@ -1905,6 +2054,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) tick
 applyLook();
 setInterval(tick, 500);
 route();
+protectStorage();
 
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
