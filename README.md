@@ -15,7 +15,7 @@ Funciona no iPhone pela Tela de Início, offline, sem App Store, sem Mac e sem c
   - **Com IA (Claude)**: entende observações em texto livre (ex.: “hérnia de disco”). Precisa de internet e de uma chave da API da Anthropic, salva só no aparelho (fica fora do backup). O uso é cobrado pela Anthropic na sua conta.
 - **Aparência**: tema automático, claro, escuro ou preto (OLED), 10 cores de destaque e estilo visual. No **Automático** (padrão), o app identifica o aparelho e usa o estilo nativo: Liquid Glass no iPhone e iPad, Material You no Android e Clássico no computador e nos demais. Também dá para escolher um dos três:
   - **Clássico**: visual sólido, sem transparências.
-  - **Liquid Glass**: no estilo do iOS 26, com barra de abas flutuante e painéis translúcidos.
+  - **Liquid Glass**: segue o iOS 26 — cores do sistema, conteúdo sólido e vidro só na navegação. Barra de abas em cápsula com a seleção que desliza e estica, vira lente ao tocar e acompanha o dedo ao arrastar entre as abas; a barra **minimiza ao rolar para baixo** e o descanso/treino em andamento fica ao lado dela (como o mini player do Apple Music). Botões do topo em vidro fixos, com o título pequeno aparecendo ao rolar, efeito de borda sob a barra de status, painéis flutuantes com cantos grandes, botões em cápsula, segmentado e interruptor do iOS 26 (a bolinha vira lente ao tocar) e, opcionalmente, reflexo do vidro que acompanha a inclinação do iPhone. Com “Reduzir transparência” o vidro fica sólido.
   - **Material You**: no estilo do Android. As cores tonais (fundo, cartões, botões e contêineres) são geradas a partir da cor de destaque, como no Material 3. Tem cantos arredondados, botões em cápsula, barra de navegação com indicador, interruptores e campos do Material, efeito de toque e a fonte Google Sans Flex.
 - **Animações**: transições entre as telas (avançar, voltar e trocar de aba), indicador de aba que desliza, painéis com efeito de mola que fecham ao arrastar para baixo, ✓ animado ao concluir a série, gráficos e anéis que se desenham e confete no fim do treino. Tudo é desligado quando o iPhone está com “Reduzir movimento”.
 - **Hoje**: mostra a ficha do dia, a semana com dias planejados/treinados e estatísticas.
@@ -79,7 +79,7 @@ No Chrome/Firefox use o modo de dispositivo móvel (F12 → ícone de celular) p
 
 ## Atualizar o app
 
-Edite os arquivos, aumente a versão em `sw.js` (`const CACHE = 'ficha-v13'`) e faça `git push`.
+Edite os arquivos, aumente a versão em `sw.js` (`const CACHE = 'ficha-v14'`) e faça `git push`.
 O app procura a versão nova sozinho sempre que é aberto (com internet) e recarrega uma vez quando encontra. Se quiser forçar, use **Ajustes → Procurar atualização**. Os dados não são apagados.
 
 ## Estrutura

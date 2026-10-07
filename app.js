@@ -663,9 +663,17 @@ function render() {
   document.body.classList.toggle('in-workout', location.hash === '#/treino');
   const tabs = [...document.querySelectorAll('#tabs a')], ti = tabs.findIndex(a => a.dataset.tab === currentTab);
   tabs.forEach((a, i) => a.classList.toggle('on', i === ti));
-  const bar = $('#tabs');
+  const bar = $('#tabs'), prevTi = bar.style.getPropertyValue('--ti');
   bar.style.setProperty('--ti', Math.max(0, ti)); bar.style.setProperty('--tn', tabs.length);
   bar.classList.toggle('no-tab', ti < 0);
+  if (prevTi !== '' && +prevTi !== Math.max(0, ti) && !reduceMotion()) {
+    const pill = $('.tab-pill'); pill.classList.remove('moving'); void pill.offsetWidth; pill.classList.add('moving');
+    clearTimeout(render.pillT); render.pillT = setTimeout(() => pill.classList.remove('moving'), 520);
+  }
+  // Título pequeno no topo quando o título grande sai da tela (Liquid Glass)
+  const top = view.querySelector('.top'), h1 = view.querySelector('h1.title');
+  if (top) top.dataset.title = h1 ? h1.textContent.trim() : '';
+  glassScroll(true);
   renderDock();
   if (afterRender) { const f = afterRender; afterRender = null; f(); }
 }
@@ -1474,6 +1482,8 @@ function viewAjustes() {
       <p class="small muted look-desc">${chosen === 'auto'
         ? `${STYLES[0][3]}. Neste aparelho: <b>${STYLES.find(x => x[0] === style)[2]}</b>.`
         : `<b>${STYLES.find(x => x[0] === chosen)[2]}:</b> ${STYLES.find(x => x[0] === chosen)[3].replace(/^./, c => c.toLowerCase())}.`}</p>
+      ${style === 'glass' && typeof DeviceOrientationEvent !== 'undefined' ? `<label class="row look-row"><div class="grow"><div class="name">Reflexo acompanha o movimento</div><div class="sub wrap">A borda do vidro brilha conforme você inclina o celular, como no sistema</div></div>
+        <span class="switch"><input type="checkbox" data-setting="glassMotion" ${S.settings.glassMotion ? 'checked' : ''}><i></i></span></label>` : ''}
       <div class="look-label">${style === 'material' ? 'Cor (a paleta é gerada a partir dela)' : 'Cor de destaque'}</div>
       <div class="swatches" role="radiogroup" aria-label="Cor de destaque">${ACCENTS.map(a => {
         const on = (S.settings.accent || 'limao') === a.id;
@@ -1535,7 +1545,7 @@ function viewAjustes() {
       <span class="muted">O app abre em tela cheia, funciona offline e mantém seus dados.</span></div>`}
 
     <div style="text-align:center;margin-top:22px"><button class="link-btn" data-act="checkUpdate">Procurar atualização</button></div>
-    <p class="small muted" style="text-align:center;margin-top:6px">Ficha · versão 2.1<br>
+    <p class="small muted" style="text-align:center;margin-top:6px">Ficha · versão 2.2<br>
       Fotos e músculos dos exercícios: <a href="https://github.com/yuhonas/free-exercise-db" target="_blank" rel="noopener" style="text-decoration:underline">free-exercise-db</a> (domínio público)<br>
       Desenho do mapa muscular: <a href="https://github.com/GV79/react-body-highlighter" target="_blank" rel="noopener" style="text-decoration:underline">react-body-highlighter</a> (MIT)<br>
       Alimentos: TACO, 4ª ed. (NEPA/UNICAMP) e <a href="https://world.openfoodfacts.org" target="_blank" rel="noopener" style="text-decoration:underline">Open Food Facts</a> (ODbL)</p>`;
@@ -2167,6 +2177,12 @@ document.addEventListener('change', e => {
   else if (t.dataset.setting === 'sound') { S.settings.sound = t.checked; save(); if (t.checked) { unlockAudio(); beep(); } }
   else if (t.dataset.setting === 'keepAwake') { S.settings.keepAwake = t.checked; save(); syncWakeLock(); }
   else if (t.dataset.setting === 'iosTimer') { S.settings.iosTimer = t.checked; save(); if (t.checked) iosTimerHelp(); }
+  else if (t.dataset.setting === 'glassMotion') {
+    glassMotion(t.checked).then(okk => {
+      S.settings.glassMotion = t.checked && okk; save();
+      if (t.checked && !okk) { t.checked = false; toast('O iPhone não liberou o sensor de movimento'); }
+    });
+  }
   else if (t.dataset.setting === 'progression' || t.dataset.setting === 'rir') { S.settings[t.dataset.setting] = t.checked; save(); }
   else if (t.hasAttribute('data-rir') && S.active) {
     const s = S.active.exercises[+t.dataset.x].sets[+t.dataset.s];
@@ -2198,6 +2214,81 @@ document.addEventListener('keydown', e => {
 $('#sheet-backdrop').addEventListener('click', closeSheet);
 window.addEventListener('hashchange', () => { if (!$('#sheet').hidden) closeSheet(); route(); });
 document.addEventListener('visibilitychange', () => { if (!document.hidden) tick(); syncWakeLock(); });
+
+/* ================= Liquid Glass: comportamento ================= */
+const isGlass = () => document.documentElement.hasAttribute('data-glass');
+let lastScrollY = 0;
+function setTabsMini(on) {
+  const bar = $('#tabs');
+  if (bar.classList.contains('mini') === on) return;
+  bar.classList.toggle('mini', on); document.body.classList.toggle('tabs-mini', on);
+}
+function glassScroll(reset) {
+  const y = window.scrollY, top = $('#view .top'), h1 = $('#view h1.title');
+  if (top) top.classList.toggle('shrunk', isGlass() && !!h1 && h1.getBoundingClientRect().bottom < top.getBoundingClientRect().bottom + 4);
+  if (reset) { setTabsMini(false); lastScrollY = y; return; }
+  if (!isGlass() || document.body.classList.contains('in-workout')) { setTabsMini(false); return; }
+  const d = y - lastScrollY;
+  if (y < 60 || d < -8) setTabsMini(false);
+  else if (d > 8 && y > 120) setTabsMini(true);
+  if (Math.abs(d) > 8) lastScrollY = y;
+}
+window.addEventListener('scroll', () => glassScroll(false), { passive: true });
+(() => {
+  const bar = $('#tabs');
+  let scrub = null, skipClick = false;
+  const idxAt = x => {
+    const tabs = [...bar.querySelectorAll('a')], i = tabs.findIndex(a => { const r = a.getBoundingClientRect(); return x >= r.left && x <= r.right; });
+    return i;
+  };
+  bar.addEventListener('dragstart', e => e.preventDefault()); // links não são arrastáveis aqui
+  // Barra minimizada: tocar expande (não troca de aba)
+  bar.addEventListener('click', e => {
+    if (skipClick) { skipClick = false; e.preventDefault(); return; }
+    if (bar.classList.contains('mini')) { e.preventDefault(); setTabsMini(false); }
+  }, true);
+  bar.addEventListener('pointerdown', e => {
+    if (!isGlass() || bar.classList.contains('mini')) return;
+    const i = idxAt(e.clientX);
+    if (i < 0) return;
+    scrub = { start: i, i, x: e.clientX, moved: false };
+    bar.classList.add('press');
+  });
+  window.addEventListener('pointermove', e => {
+    if (!scrub) return;
+    if (Math.abs(e.clientX - scrub.x) > 10) scrub.moved = true;
+    const i = idxAt(e.clientX);
+    if (scrub.moved && i >= 0 && i !== scrub.i) { scrub.i = i; bar.style.setProperty('--ti', i); }
+  });
+  const end = () => {
+    if (!scrub) return;
+    bar.classList.remove('press');
+    const { i, start, moved } = scrub; scrub = null;
+    if (moved && i !== start) { skipClick = true; setTimeout(() => { skipClick = false; }, 400); location.hash = bar.querySelectorAll('a')[i].getAttribute('href'); }
+    else if (moved) bar.style.setProperty('--ti', start);
+  };
+  window.addEventListener('pointerup', end);
+  window.addEventListener('pointercancel', end);
+})();
+// Reflexo do vidro acompanha a inclinação do iPhone (opcional, pede permissão no iOS)
+let glassMotionOn = false;
+function glassTilt(e) {
+  if (e.gamma == null) return;
+  const a = 135 + Math.max(-40, Math.min(40, e.gamma)) * 1.6 - Math.max(-30, Math.min(30, (e.beta || 45) - 45)) * 0.8;
+  if (!glassTilt.raf) glassTilt.raf = requestAnimationFrame(() => { glassTilt.raf = 0; document.documentElement.style.setProperty('--glass-angle', a.toFixed(0) + 'deg'); });
+}
+async function glassMotion(enable) {
+  if (!enable) { window.removeEventListener('deviceorientation', glassTilt); glassMotionOn = false; document.documentElement.style.removeProperty('--glass-angle'); return true; }
+  if (typeof DeviceOrientationEvent === 'undefined') return false;
+  if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+    try { if (await DeviceOrientationEvent.requestPermission() !== 'granted') return false; } catch (e) { return false; }
+  }
+  if (!glassMotionOn) window.addEventListener('deviceorientation', glassTilt);
+  glassMotionOn = true;
+  return true;
+}
+// No iPhone a permissão só pode ser pedida num toque: reativa no primeiro toque de cada abertura
+document.addEventListener('pointerdown', () => { if (S.settings.glassMotion) glassMotion(true); }, { once: true });
 
 /* ================= Início ================= */
 applyLook();
