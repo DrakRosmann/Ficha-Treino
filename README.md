@@ -53,6 +53,10 @@ Funciona no iPhone pela Tela de Início, offline, sem App Store, sem Mac e sem c
 
 Tipos de registro: carga × reps, peso corporal (+kg opcional) × reps, tempo em segundos (prancha) e cardio (min / km).
 
+## App Android
+
+Na pasta [`android/`](android/README.md) está a versão nativa para Android (Kotlin + Jetpack Compose, Material 3 Expressive), com os mesmos dados: o backup `.json` vale nos dois apps.
+
 ## Publicar no GitHub Pages (grátis)
 
 1. Crie um repositório público no GitHub, por exemplo `ficha`.
