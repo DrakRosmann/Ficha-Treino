@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">Ficha</string>
+    <string name="channel_rest">Descanso</string>
+    <string name="channel_rest_desc">Contagem do descanso entre as séries e o treino em andamento</string>
+    <string name="channel_alarm">Fim do descanso</string>
+    <string name="channel_alarm_desc">Aviso com som e vibração quando o descanso acaba</string>
+</resources>
