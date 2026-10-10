@@ -19,6 +19,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialShapes
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SegmentedListItem
 import androidx.compose.material3.Surface
@@ -173,7 +174,8 @@ fun StatRow(stats: List<Pair<String, String>>, modifier: Modifier = Modifier) {
 @Composable
 fun KeyValue(key: String, value: String, valueColor: Color = Color.Unspecified, modifier: Modifier = Modifier) {
     Row(modifier.fillMaxWidth().padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(key, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+        // Rótulo mais apagado que o valor, na cor do fundo em que está (cartão neutro ou colorido)
+        Text(key, style = MaterialTheme.typography.bodyMedium, color = LocalContentColor.current.copy(alpha = .72f), modifier = Modifier.weight(1f))
         Spacer(Modifier.width(12.dp))
         Text(value, style = MaterialTheme.typography.titleSmallEmphasized.copy(fontFeatureSettings = "tnum"), color = valueColor)
     }

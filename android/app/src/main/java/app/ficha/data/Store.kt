@@ -48,9 +48,24 @@ class Store(context: Context) {
         }
     }
 
+    /** Chamado depois de cada mudança (a nuvem usa para enviar). */
+    var onChange: (() -> Unit)? = null
+
     @Synchronized
     fun update(f: (AppData) -> AppData) {
+        val before = value
         value = f(value)
+        scheduleSave()
+        if (value !== before) onChange?.invoke()
+    }
+
+    /** O JSON completo (com as partes que o app não conhece), no formato do PWA. */
+    fun snapshot(): JsonObject = toJson(value)
+
+    /** Troca tudo por este JSON (usado pela sincronização). */
+    @Synchronized
+    fun replace(o: JsonObject) {
+        applyJson(o)
         scheduleSave()
     }
 
@@ -108,12 +123,24 @@ class Store(context: Context) {
 
     /* ---------------- Backup ---------------- */
 
-    fun exportJson(): String {
-        val o = JsonObject(mapOf("app" to JsonPrimitive("ficha"), "exportedAt" to JsonPrimitive(Instant.now().toString())) + toJson(value))
-        return pretty.encodeToString(JsonObject.serializer(), o)
+    /** Arquivo de backup; com [photoData] ({ id: [foto, miniatura] } em base64) inclui as fotos, como o PWA. */
+    fun exportJson(photoData: Map<String, Pair<String, String>>? = null): String {
+        val ph = photoData?.takeIf { it.isNotEmpty() }?.let { m ->
+            mapOf("photoData" to JsonObject(m.mapValues { (_, v) -> JsonArray(listOf(JsonPrimitive(v.first), JsonPrimitive(v.second))) }))
+        } ?: emptyMap()
+        val o = JsonObject(mapOf("app" to JsonPrimitive("ficha"), "exportedAt" to JsonPrimitive(Instant.now().toString())) + toJson(value) + ph)
+        return (if (ph.isEmpty()) pretty else json).encodeToString(JsonObject.serializer(), o)
     }
 
-    class Preview(val routines: Int, val sessions: Int, val photos: Int, val raw: JsonObject)
+    class Preview(val routines: Int, val sessions: Int, val photos: Int, val raw: JsonObject) {
+        /** Fotos do progresso que vieram no arquivo. */
+        val photoData: Map<String, Pair<String, String>>
+            get() = (raw["photoData"] as? JsonObject)?.mapNotNull { (id, v) ->
+                val a = v as? JsonArray ?: return@mapNotNull null
+                val full = (a.getOrNull(0) as? JsonPrimitive)?.content ?: return@mapNotNull null
+                id to (full to ((a.getOrNull(1) as? JsonPrimitive)?.content ?: full))
+            }?.toMap() ?: emptyMap()
+    }
 
     /** Confere se o texto é um backup do Ficha (do PWA ou deste app). */
     fun readBackup(text: String): Preview? = try {
@@ -128,8 +155,9 @@ class Store(context: Context) {
     /** Substitui os dados pelos do backup, guardando uma cópia dos atuais para desfazer. */
     fun importBackup(p: Preview) {
         prevFile.writeText(json.encodeToString(JsonObject.serializer(), JsonObject(toJson(value) + ("_at" to JsonPrimitive(System.currentTimeMillis())))))
-        applyJson(p.raw)
+        applyJson(JsonObject(p.raw - "photoData"))
         scheduleSave()
+        onChange?.invoke()
     }
 
     /** Data da cópia de antes da última importação (válida por 30 dias), ou null. */

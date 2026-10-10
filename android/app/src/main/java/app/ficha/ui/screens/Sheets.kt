@@ -45,6 +45,8 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.foundation.layout.Box
+import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
@@ -56,6 +58,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -102,15 +105,22 @@ import java.net.URLEncoder
 @Composable
 fun Sheet(onDismiss: () -> Unit, title: String? = null, content: @Composable ColumnScope.() -> Unit) {
     val state = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val snackbar = LocalApp.current.snackbar
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = state, containerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
-        if (title != null) {
-            Row(Modifier.fillMaxWidth().padding(start = 24.dp, end = 12.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(title, style = MaterialTheme.typography.titleLargeEmphasized, modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
-                val scope = rememberCoroutineScope()
-                IconButton(onClick = { scope.launch { state.hide() }.invokeOnCompletion { onDismiss() } }) { Icon(Icons.Rounded.Close, "Fechar") }
+        Box {
+            Column {
+                if (title != null) {
+                    Row(Modifier.fillMaxWidth().padding(start = 24.dp, end = 12.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(title, style = MaterialTheme.typography.titleLargeEmphasized, modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        val scope = rememberCoroutineScope()
+                        IconButton(onClick = { scope.launch { state.hide() }.invokeOnCompletion { onDismiss() } }) { Icon(Icons.Rounded.Close, "Fechar") }
+                    }
+                }
+                androidx.compose.runtime.CompositionLocalProvider(app.ficha.ui.components.LocalSegColor provides MaterialTheme.colorScheme.surfaceContainerHigh) { content() }
             }
+            // O painel fica numa janela por cima do app: os avisos precisam aparecer aqui também
+            SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).navigationBarsPadding())
         }
-        androidx.compose.runtime.CompositionLocalProvider(app.ficha.ui.components.LocalSegColor provides MaterialTheme.colorScheme.surfaceContainerHigh) { content() }
     }
 }
 
@@ -162,7 +172,7 @@ fun VideoActions(data: AppData, exId: String) {
             Icon(Icons.Rounded.PlayCircle, null); Spacer(Modifier.width(8.dp)); Text("Ver vídeos da execução")
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            if (!ex?.en.isNullOrBlank()) TextButton(onClick = { open(youtubeUrl("${ex!!.en} exercise")) }) { Text("Buscar em inglês") } else Spacer(Modifier)
+            if (!ex?.en.isNullOrBlank()) TextButton(onClick = { open(youtubeUrl("${ex.en} exercise")) }) { Text("Buscar em inglês") } else Spacer(Modifier)
             TextButton(onClick = {
                 app.prompt(
                     "Meu vídeo", mine ?: "", "Link do vídeo", "https://…",
@@ -205,82 +215,87 @@ fun ExercisePickerSheet(
     val scope = rememberCoroutineScope()
     val finish = { ids: List<String> -> scope.launch { state.hide() }.invokeOnCompletion { onDismiss(); onDone(ids) } }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = state, containerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
-        Column(Modifier.fillMaxHeight(0.94f).imePadding()) {
-            Text(
-                if (multi) "Adicionar exercícios" else "Escolher exercício", style = MaterialTheme.typography.titleLargeEmphasized,
-                modifier = Modifier.padding(start = 24.dp, bottom = 8.dp),
-            )
-            OutlinedTextField(
-                value = q, onValueChange = { q = it }, singleLine = true,
-                leadingIcon = { Icon(Icons.Rounded.Search, null) },
-                trailingIcon = { if (q.isNotEmpty()) IconButton(onClick = { q = "" }) { Icon(Icons.Rounded.Close, "Limpar") } },
-                placeholder = { Text("Buscar exercício") },
-                shape = RoundedCornerShape(28.dp),
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-            )
-            LazyRow(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(listOf("") + Catalog.groups) { g ->
-                    FilterChip(selected = group == g, onClick = { group = g }, label = { Text(g.ifEmpty { "Todos" }) })
+        Box {
+            Column(Modifier.fillMaxHeight(0.94f).imePadding()) {
+                Text(
+                    if (multi) "Adicionar exercícios" else "Escolher exercício", style = MaterialTheme.typography.titleLargeEmphasized,
+                    modifier = Modifier.padding(start = 24.dp, bottom = 8.dp),
+                )
+                OutlinedTextField(
+                    value = q, onValueChange = { q = it }, singleLine = true,
+                    leadingIcon = { Icon(Icons.Rounded.Search, null) },
+                    trailingIcon = { if (q.isNotEmpty()) IconButton(onClick = { q = "" }) { Icon(Icons.Rounded.Close, "Limpar") } },
+                    placeholder = { Text("Buscar exercício") },
+                    shape = RoundedCornerShape(28.dp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                )
+                LazyRow(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(listOf("") + Catalog.groups) { g ->
+                        FilterChip(selected = group == g, onClick = { group = g }, label = { Text(g.ifEmpty { "Todos" }) })
+                    }
                 }
-            }
-            val listState = rememberLazyListState()
-            LazyColumn(Modifier.weight(1f), state = listState, contentPadding = PaddingValues(bottom = 16.dp)) {
-                var lastGroup = ""
-                list.forEach { e ->
-                    if (e.group != lastGroup) {
-                        lastGroup = e.group
-                        val g = e.group
-                        stickyHeader(key = "h-$g") {
-                            Text(
-                                g, style = MaterialTheme.typography.titleSmallEmphasized, color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.fillMaxWidth()
-                                    .background(MaterialTheme.colorScheme.surfaceContainerLow)
-                                    .padding(horizontal = 24.dp, vertical = 8.dp),
+                val listState = rememberLazyListState()
+                // A lista tem chaves: sem isso, ao digitar ela fica presa num item que mudou de lugar
+                LaunchedEffect(q, group) { listState.scrollToItem(0) }
+                LazyColumn(Modifier.weight(1f), state = listState, contentPadding = PaddingValues(bottom = 16.dp)) {
+                    var lastGroup = ""
+                    list.forEach { e ->
+                        if (e.group != lastGroup) {
+                            lastGroup = e.group
+                            val g = e.group
+                            stickyHeader(key = "h-$g") {
+                                Text(
+                                    g, style = MaterialTheme.typography.titleSmallEmphasized, color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.fillMaxWidth()
+                                        .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                                        .padding(horizontal = 24.dp, vertical = 8.dp),
+                                )
+                            }
+                        }
+                        item(key = e.id) {
+                            val on = e.id in sel
+                            ListItem(
+                                onClick = {
+                                    if (!multi) finish(listOf(e.id))
+                                    else if (on) sel.remove(e.id) else sel.add(e.id)
+                                },
+                                leadingContent = { ExerciseThumb(e, 52.dp) },
+                                supportingContent = { Text(e.equip + if (e.custom) " · personalizado" else "") },
+                                trailingContent = {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        IconButton(onClick = { preview = e.id }) { Icon(Icons.Rounded.OpenInFull, "Ver execução", Modifier.size(20.dp)) }
+                                        if (multi) Icon(
+                                            if (on) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, null,
+                                            tint = if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                                        )
+                                    }
+                                },
+                                colors = ListItemDefaults.colors(containerColor = if (on) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent),
+                                content = { Text(e.name, maxLines = 2, overflow = TextOverflow.Ellipsis) },
                             )
                         }
                     }
-                    item(key = e.id) {
-                        val on = e.id in sel
-                        ListItem(
-                            onClick = {
-                                if (!multi) finish(listOf(e.id))
-                                else if (on) sel.remove(e.id) else sel.add(e.id)
-                            },
-                            leadingContent = { ExerciseThumb(e, 52.dp) },
-                            supportingContent = { Text(e.equip + if (e.custom) " · personalizado" else "") },
-                            trailingContent = {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    IconButton(onClick = { preview = e.id }) { Icon(Icons.Rounded.OpenInFull, "Ver execução", Modifier.size(20.dp)) }
-                                    if (multi) Icon(
-                                        if (on) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked, null,
-                                        tint = if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
-                                    )
-                                }
-                            },
-                            colors = ListItemDefaults.colors(containerColor = if (on) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent),
-                            content = { Text(e.name, maxLines = 2, overflow = TextOverflow.Ellipsis) },
-                        )
+                    if (list.isEmpty()) item {
+                        Text("Nada encontrado. Não achou? Crie o exercício.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(24.dp))
+                    }
+                    item {
+                        OutlinedButton(onClick = { creating = true }, shapes = ButtonDefaults.shapes(), modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+                            Icon(Icons.Rounded.Add, null); Spacer(Modifier.width(8.dp))
+                            Text("Criar exercício" + if (q.isNotBlank()) " “${q.trim()}”" else "")
+                        }
                     }
                 }
-                if (list.isEmpty()) item {
-                    Text("Nada encontrado. Não achou? Crie o exercício.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(24.dp))
-                }
-                item {
-                    OutlinedButton(onClick = { creating = true }, shapes = ButtonDefaults.shapes(), modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-                        Icon(Icons.Rounded.Add, null); Spacer(Modifier.width(8.dp))
-                        Text("Criar exercício" + if (q.isNotBlank()) " “${q.trim()}”" else "")
+                if (multi) {
+                    HorizontalDivider()
+                    Button(
+                        onClick = { if (sel.isNotEmpty()) finish(sel.toList()) }, enabled = sel.isNotEmpty(), shapes = ButtonDefaults.shapes(),
+                        modifier = Modifier.fillMaxWidth().padding(16.dp).navigationBarsPadding().height(ButtonDefaults.MediumContainerHeight),
+                    ) {
+                        Text(if (sel.isEmpty()) "Selecione os exercícios" else "Adicionar ${sel.size} exercício${if (sel.size > 1) "s" else ""}", style = MaterialTheme.typography.titleMedium)
                     }
                 }
             }
-            if (multi) {
-                HorizontalDivider()
-                Button(
-                    onClick = { if (sel.isNotEmpty()) finish(sel.toList()) }, enabled = sel.isNotEmpty(), shapes = ButtonDefaults.shapes(),
-                    modifier = Modifier.fillMaxWidth().padding(16.dp).navigationBarsPadding().height(ButtonDefaults.MediumContainerHeight),
-                ) {
-                    Text(if (sel.isEmpty()) "Selecione os exercícios" else "Adicionar ${sel.size} exercício${if (sel.size > 1) "s" else ""}", style = MaterialTheme.typography.titleMedium)
-                }
-            }
+            SnackbarHost(LocalApp.current.snackbar, Modifier.align(Alignment.BottomCenter).navigationBarsPadding())
         }
     }
     preview?.let { id ->

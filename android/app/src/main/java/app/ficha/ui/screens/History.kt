@@ -25,6 +25,7 @@ import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.EmojiEvents
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
@@ -121,6 +122,7 @@ fun HistoryScreen(data: AppData) {
                 fmtDur(avg) to "duração média",
             ))
         }
+        item { AchHistoryCard(data) }
         item { SectionHeader("Séries por músculo") }
         item { MuscleVolume(data) }
         var month = ""
@@ -269,6 +271,7 @@ fun SessionScreen(data: AppData, id: String) {
     }
     val vol = s.volume()
     var menu by remember { mutableStateOf(false) }
+    var share by remember { mutableStateOf(false) }
     val celebrate = remember { app.summaryFor == id }
     LaunchedEffect(Unit) { if (app.summaryFor == id) app.summaryFor = null }
     val prKeys = s.prs.map { it.exId }.toSet()
@@ -276,6 +279,7 @@ fun SessionScreen(data: AppData, id: String) {
         Screen(
             title = s.name, subtitle = "${dateLong(s.start)} · ${timeHM(s.start)}", back = true, large = false,
             actions = {
+                IconButton(onClick = { share = true }) { Icon(Icons.Rounded.Share, "Compartilhar") }
                 IconButton(onClick = { menu = true }) { Icon(Icons.Rounded.MoreVert, "Opções") }
                 DropdownMenu(menu, { menu = false }) {
                     DropdownMenuItem(text = { Text("Renomear") }, leadingIcon = { Icon(Icons.Rounded.Edit, null) }, onClick = {
@@ -295,6 +299,14 @@ fun SessionScreen(data: AppData, id: String) {
             if (celebrate) item { Celebration(s) }
             item {
                 if (!celebrate) StatRow(listOf(fmtDur(s.end - s.start) to "duração", s.setCount().toString() to "séries", (if (vol > 0) fmtInt(vol) else "—") to "kg de volume"))
+                if (celebrate) FilledTonalButton(onClick = { share = true }, shapes = ButtonDefaults.shapes(), modifier = Modifier.fillMaxWidth().padding(horizontal = Gutter, vertical = 8.dp)) {
+                    Icon(Icons.Rounded.Share, null); Spacer(Modifier.width(8.dp)); Text("Compartilhar nos Stories")
+                }
+            }
+            val ach = s.ach.orEmpty()
+            if (ach.isNotEmpty()) {
+                item { SectionHeader(if (celebrate) (if (ach.size > 1) "Conquistas desbloqueadas" else "Conquista desbloqueada") else "Conquistas deste treino") }
+                item { AchBadgesRow(data, ach) }
             }
             if (s.prs.isNotEmpty()) {
                 item { SectionHeader("Recordes pessoais") }
@@ -337,8 +349,9 @@ fun SessionScreen(data: AppData, id: String) {
                 ) { Icon(Icons.Rounded.PlayArrow, null); Spacer(Modifier.width(8.dp)); Text("Repetir este treino", style = MaterialTheme.typography.titleMedium) }
             }
         }
-        if (celebrate) Confetti(Modifier.fillMaxSize(), if (s.prs.isNotEmpty()) 140 else 80)
+        if (celebrate) Confetti(Modifier.fillMaxSize(), if (s.prs.isNotEmpty() || !s.ach.isNullOrEmpty()) 140 else 80)
     }
+    if (share) ShareSheet(data, "session", id) { share = false }
 }
 
 /** Resumo no fim do treino: troféu, números que sobem até o valor e recordes. */

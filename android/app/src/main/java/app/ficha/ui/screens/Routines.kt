@@ -163,12 +163,14 @@ fun RoutinesScreen(data: AppData) {
             ) {
                 FloatingActionButtonMenuItem(onClick = { fabOpen = false; newProgram(app) }, icon = { Icon(Icons.Rounded.Folder, null) }, text = { Text("Novo programa") })
                 FloatingActionButtonMenuItem(onClick = { fabOpen = false; newRoutine(app, null) }, icon = { Icon(Icons.AutoMirrored.Rounded.ListAlt, null) }, text = { Text("Nova ficha avulsa") })
-                FloatingActionButtonMenuItem(onClick = { fabOpen = false; app.go(Route.Templates) }, icon = { Icon(Icons.Rounded.AutoAwesome, null) }, text = { Text("Usar um modelo pronto") })
+                FloatingActionButtonMenuItem(onClick = { fabOpen = false; app.go(Route.Templates) }, icon = { Icon(Icons.Rounded.Folder, null) }, text = { Text("Usar um modelo pronto") })
+                FloatingActionButtonMenuItem(onClick = { fabOpen = false; app.go(Route.Assistant) }, icon = { Icon(Icons.Rounded.AutoAwesome, null) }, text = { Text("Montar meu treino") })
             }
         },
     ) {
         item {
-            Banner(Icons.Rounded.AutoAwesome, "Modelos prontos", "PPL, Upper/Lower, ABC, ABCDE, em casa e mais", true) { app.go(Route.Templates) }
+            Banner(Icons.Rounded.AutoAwesome, "Montar meu treino", "Responda algumas perguntas e escolha entre 3 opções", true) { app.go(Route.Assistant) }
+            Banner(Icons.AutoMirrored.Rounded.ListAlt, "Modelos prontos", "PPL, Upper/Lower, ABC, ABCDE, em casa e mais", false) { app.go(Route.Templates) }
             Banner(Icons.Rounded.FitnessCenter, "Exercícios", "${data.allEx().size} exercícios com foto da execução, músculos e sua evolução", false) { app.go(Route.Exercises) }
         }
         if (data.routines.isEmpty() && data.programs.isEmpty()) {

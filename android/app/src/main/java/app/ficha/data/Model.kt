@@ -30,6 +30,16 @@ data class AppData(
     val sessions: List<Session> = emptyList(),
     val active: ActiveWorkout? = null,
     val videos: Map<String, String> = emptyMap(),
+    val profile: Profile? = null,
+    val body: List<BodyEntry> = emptyList(),
+    val bodyGoal: BodyGoal = BodyGoal(),
+    val food: FoodData = FoodData(),
+    val photos: List<ProgressPhoto> = emptyList(),
+    /** Conquistas desbloqueadas (null = ainda não conferidas nesta instalação) */
+    @Serializable(AchMapSerializer::class) val ach: Map<String, Long>? = null,
+    val coach: CoachData? = null,
+    /** Quando os dados mudaram por último (usado na sincronização entre aparelhos) */
+    @Serializable(LenientLong::class) val mt: Long = 0,
 )
 
 @Serializable
@@ -103,8 +113,8 @@ data class Session(
     @Serializable(LenientString::class) val notes: String = "",
     val exercises: List<SessionExercise> = emptyList(),
     val prs: List<PR> = emptyList(),
-    /** Conquistas desbloqueadas neste treino (guardadas como vieram do PWA). */
-    val ach: JsonElement? = null,
+    /** Conquistas desbloqueadas neste treino */
+    val ach: List<String>? = null,
 )
 
 @Serializable

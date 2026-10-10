@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Só na build de debug: permite testar a sincronização com um servidor local no computador (10.0.2.2 no emulador). -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application android:networkSecurityConfig="@xml/network_security_debug" />
+</manifest>

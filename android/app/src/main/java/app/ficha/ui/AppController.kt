@@ -12,6 +12,10 @@ import androidx.navigation3.runtime.NavBackStack
 import androidx.navigation3.runtime.NavKey
 import app.ficha.data.AppData
 import app.ficha.data.Store
+import app.ficha.logic.ACH_BY_ID
+import app.ficha.logic.achCheck
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
@@ -31,6 +35,14 @@ sealed interface Route : NavKey {
     @Serializable data class Exercise(val id: String) : Route
     @Serializable data class Session(val id: String) : Route
     @Serializable data object Workout : Route
+    @Serializable data object Diet : Route
+    @Serializable data object Body : Route
+    @Serializable data object Photos : Route
+    @Serializable data class Camera(val t: Long, val pose: String) : Route
+    @Serializable data object Assistant : Route
+    @Serializable data object Coach : Route
+    @Serializable data object Achievements : Route
+    @Serializable data object Cloud : Route
 }
 
 class ConfirmRequest(val title: String, val text: String, val ok: String, val danger: Boolean, val onOk: () -> Unit)
@@ -47,11 +59,37 @@ class AppController(
 ) {
     val data: AppData get() = store.value
 
+    init {
+        // Dados de antes das conquistas: marca as já cumpridas em silêncio
+        if (data.ach == null) store.update { it.achCheck().first }
+    }
+
     /** A última troca de tela foi pela barra de abas (animação diferente). */
     var tabSwitch = false
         private set
 
-    fun update(f: (AppData) -> AppData) = store.update(f)
+    fun update(f: (AppData) -> AppData) {
+        store.update(f)
+        achSoon()
+    }
+
+    private var achJob: Job? = null
+
+    /** Depois das mudanças, confere as conquistas (no meio do treino, o resumo final mostra). */
+    private fun achSoon() {
+        achJob?.cancel()
+        achJob = scope.launch {
+            delay(1200)
+            if (data.active != null) return@launch
+            val (nd, fresh) = data.achCheck()
+            if (nd === data) return@launch
+            store.update { nd }
+            if (fresh.isNotEmpty()) {
+                val a = ACH_BY_ID.getValue(fresh[0])
+                toast(if (fresh.size > 1) "${a.e} ${fresh.size} conquistas novas! Veja no Histórico" else "${a.e} Conquista: ${a.n}")
+            }
+        }
+    }
 
     fun go(r: Route) {
         tabSwitch = false

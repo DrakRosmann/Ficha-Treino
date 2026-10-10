@@ -62,7 +62,22 @@ import app.ficha.ui.theme.PALETTES
 import app.ficha.ui.theme.THEMES
 import app.ficha.ui.theme.isDarkTheme
 import app.ficha.ui.theme.schemeFromSeed
-import kotlinx.serialization.json.JsonArray
+import app.ficha.ai.Claude
+import app.ficha.logic.ACH
+import app.ficha.logic.fmt
+import app.ficha.logic.plural
+import app.ficha.photos.PhotoStore
+import app.ficha.sync.CloudSync
+import app.ficha.sync.Reminders
+import app.ficha.ui.components.AiKeySheet
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.time.LocalDate
 
@@ -75,43 +90,69 @@ fun SettingsScreen(data: AppData) {
     var calc by remember { mutableStateOf(false) }
     val backupName = "ficha-backup-${LocalDate.now()}.json"
 
+    val scope = rememberCoroutineScope()
+    var exportAsk by remember { mutableStateOf<String?>(null) } // save | share
+    var withPhotos by remember { mutableStateOf(false) }
+    var keySheet by remember { mutableStateOf(false) }
+    suspend fun backupText() = withContext(Dispatchers.IO) {
+        app.store.exportJson(if (withPhotos) PhotoStore.exportData(app.data.photos.map { it.id }) else null)
+    }
+
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
-        if (uri != null) runCatching {
-            context.contentResolver.openOutputStream(uri)!!.use { it.write(app.store.exportJson().toByteArray()) }
-            set { it.copy(lastBackup = System.currentTimeMillis(), backupSnooze = 0) }
-            app.toast("Backup salvo")
-        }.onFailure { app.toast("Não foi possível salvar o backup") }
+        if (uri != null) scope.launch {
+            runCatching {
+                val text = backupText()
+                withContext(Dispatchers.IO) { context.contentResolver.openOutputStream(uri)!!.use { it.write(text.toByteArray()) } }
+                set { it.copy(lastBackup = System.currentTimeMillis(), backupSnooze = 0) }
+                app.toast("Backup salvo")
+            }.onFailure { app.toast("Não foi possível salvar o backup") }
+        }
     }
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) {
-            val text = runCatching { context.contentResolver.openInputStream(uri)!!.bufferedReader().use { it.readText() } }.getOrNull()
+        if (uri != null) scope.launch {
+            val text = withContext(Dispatchers.IO) { runCatching { context.contentResolver.openInputStream(uri)!!.bufferedReader().use { it.readText() } }.getOrNull() }
             val p = text?.let { app.store.readBackup(it) }
             if (p == null) app.toast("Esse arquivo não é um backup do Ficha")
             else app.confirm(
                 "Importar backup?",
-                "O arquivo tem ${p.routines} fichas e ${p.sessions} treinos${if (p.photos > 0) " (as ${p.photos} fotos do progresso ainda não são importadas no Android)" else ""}. Os dados atuais deste aparelho serão substituídos.",
+                "O arquivo tem ${p.routines} fichas e ${p.sessions} treinos${if (p.photos > 0) " e ${p.photos} fotos do progresso" else ""}. Os dados atuais deste aparelho serão substituídos.",
                 "Importar", danger = true,
             ) {
+                val ph = p.photoData
                 app.store.importBackup(p)
                 app.toast("Backup importado — dá para desfazer em Ajustes")
                 app.tab(Route.Today)
+                if (ph.isNotEmpty()) app.scope.launch {
+                    runCatching { PhotoStore.importData(ph) }
+                        .onSuccess { app.toast("${ph.size} fotos importadas") }
+                        .onFailure { app.toast("Não foi possível importar as fotos") }
+                }
             }
         }
     }
     val shareBackup = {
-        runCatching {
-            val dir = File(context.cacheDir, "share").apply { mkdirs() }
-            val f = File(dir, backupName).apply { writeText(app.store.exportJson()) }
-            val uri = FileProvider.getUriForFile(context, context.packageName + ".files", f)
-            context.startActivity(Intent.createChooser(
-                Intent(Intent.ACTION_SEND).setType("application/json").putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),
-                "Backup do Ficha",
-            ))
-            set { it.copy(lastBackup = System.currentTimeMillis(), backupSnooze = 0) }
-        }.onFailure { app.toast("Não foi possível compartilhar o backup") }
+        scope.launch {
+            runCatching {
+                val text = backupText()
+                val f = withContext(Dispatchers.IO) {
+                    val dir = File(context.cacheDir, "share").apply { mkdirs() }
+                    File(dir, backupName).apply { writeText(text) }
+                }
+                val uri = FileProvider.getUriForFile(context, context.packageName + ".files", f)
+                context.startActivity(Intent.createChooser(
+                    Intent(Intent.ACTION_SEND).setType("application/json").putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),
+                    "Backup do Ficha",
+                ))
+                set { it.copy(lastBackup = System.currentTimeMillis(), backupSnooze = 0) }
+            }.onFailure { app.toast("Não foi possível compartilhar o backup") }
+        }
+    }
+    val startExport = { how: String ->
+        if (data.photos.isNotEmpty()) exportAsk = how
+        else { withPhotos = false; if (how == "save") exportLauncher.launch(backupName) else shareBackup() }
     }
 
-    Screen(title = "Ajustes") {
+    Screen(title = "Ajustes", back = true) {
         item { SectionHeader("Aparência") }
         item {
             CardBox {
@@ -189,12 +230,35 @@ fun SettingsScreen(data: AppData) {
             ))
         }
 
+        item { SectionHeader("Inteligência artificial") }
+        item {
+            val hasKey = Claude.key(context).isNotEmpty()
+            SegmentedList(listOf(
+                Seg(headline = "Montar meu treino", supporting = "Responda algumas perguntas e receba 3 opções de programa", onClick = { app.go(Route.Assistant) }, trailing = { Icon(Icons.AutoMirrored.Rounded.ArrowForward, null) }),
+                Seg(headline = "Treinador IA", supporting = "Relatório da semana e conversa sobre treino e dieta", onClick = { app.go(Route.Coach) }, trailing = { Icon(Icons.AutoMirrored.Rounded.ArrowForward, null) }),
+                Seg(
+                    headline = "Chave da API da Anthropic", supporting = if (hasKey) "Configurada · usada pelo assistente, treinador e dieta" else "Necessária para os recursos de IA (Claude)",
+                    onClick = { keySheet = true }, trailing = { Icon(Icons.AutoMirrored.Rounded.ArrowForward, null) },
+                ),
+                Seg(headline = "Conquistas", supporting = "${ACH.count { data.ach?.get(it.id) != null }} de ${ACH.size} desbloqueadas", onClick = { app.go(Route.Achievements) }, trailing = { Icon(Icons.AutoMirrored.Rounded.ArrowForward, null) }),
+            ))
+        }
+
+        item { SectionHeader("Nuvem e lembretes") }
+        item {
+            SegmentedList(listOf(Seg(
+                headline = "Sincronização e lembretes",
+                supporting = (if (CloudSync.on) "Sincronização ativa" else "Sincronização desligada") + " · " + (if (Reminders.config(context).on) "lembretes ativos" else "lembretes desligados"),
+                onClick = { app.go(Route.Cloud) }, trailing = { Icon(Icons.AutoMirrored.Rounded.ArrowForward, null) },
+            )))
+        }
+
         item { SectionHeader("Seus dados") }
         item {
             val prev = app.store.previousCopyAt()
             SegmentedList(buildList {
-                add(Seg(headline = "Exportar backup", supporting = data.backupLabel(), onClick = { exportLauncher.launch(backupName) }, trailing = { Icon(Icons.AutoMirrored.Rounded.ArrowForward, null) }))
-                add(Seg(headline = "Compartilhar backup", supporting = "Enviar o arquivo para o Drive, e-mail ou outro app", onClick = { shareBackup() }, trailing = { Icon(Icons.AutoMirrored.Rounded.ArrowForward, null) }))
+                add(Seg(headline = "Exportar backup", supporting = data.backupLabel(), onClick = { startExport("save") }, trailing = { Icon(Icons.AutoMirrored.Rounded.ArrowForward, null) }))
+                add(Seg(headline = "Compartilhar backup", supporting = "Enviar o arquivo para o Drive, e-mail ou outro app", onClick = { startExport("share") }, trailing = { Icon(Icons.AutoMirrored.Rounded.ArrowForward, null) }))
                 add(Seg(headline = "Importar backup", supporting = "Do PWA ou deste app · substitui os dados atuais", onClick = { importLauncher.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) }, trailing = { Icon(Icons.AutoMirrored.Rounded.ArrowForward, null) }))
                 if (prev != null) add(Seg(headline = "Desfazer a última importação", supporting = "Volta aos dados de antes de importar (${dateShort(prev)})", onClick = {
                     app.confirm("Desfazer a importação?", "Volta aos dados que estavam neste aparelho antes de importar.", "Desfazer importação", danger = true) {
@@ -203,19 +267,25 @@ fun SettingsScreen(data: AppData) {
                 }))
                 add(Seg(headline = "Modelos de treino prontos", supporting = "PPL, Upper/Lower, ABC, ABCDE, em casa e mais", onClick = { app.go(Route.Templates) }, trailing = { Icon(Icons.AutoMirrored.Rounded.ArrowForward, null) }))
                 add(Seg(headline = "Apagar todos os dados", headlineColor = MaterialTheme.colorScheme.error, onClick = {
-                    app.confirm("Apagar tudo?", "Fichas, histórico e exercícios personalizados serão apagados deste aparelho. Isso não pode ser desfeito.", "Apagar tudo", danger = true) {
+                    app.confirm(
+                        "Apagar tudo?",
+                        "Fichas, histórico, dieta, medidas, fotos do progresso e exercícios personalizados serão apagados deste aparelho, e a sincronização e a chave da IA são desligadas. Isso não pode ser desfeito.",
+                        "Apagar tudo", danger = true,
+                    ) {
+                        CloudSync.off()
+                        Claude.setKey(context, "")
+                        PhotoStore.wipe()
                         app.store.wipe(); app.toast("Dados apagados"); app.tab(Route.Today)
                     }
                 }))
             })
-            val keep = listOf("food" to "dieta", "body" to "medidas", "photos" to "fotos").mapNotNull { (k, l) ->
-                val n = (app.store.extra(k) as? JsonArray)?.size ?: if (k == "food" && app.store.extra(k) != null) 1 else 0
-                if (n > 0) l else null
-            }
             Hint(
-                "${data.programs.size} programas · ${data.routines.size} fichas · ${data.sessions.size} treinos · ${data.custom.size} exercícios personalizados. " +
-                    "Tudo fica salvo só neste aparelho: exporte um backup de vez em quando. O arquivo é o mesmo do app web (PWA), então dá para levar os dados de um para o outro." +
-                    if (keep.isNotEmpty()) " Os dados de ${keep.joinToString(", ")} vindos do PWA ficam guardados e voltam no backup." else "",
+                listOf(
+                    plural(data.programs.size, "programa", "programas"), plural(data.routines.size, "ficha", "fichas"), plural(data.sessions.size, "treino", "treinos"),
+                    plural(data.food.days.size, "dia de dieta", "dias de dieta"), plural(data.body.size, "registro de medidas", "registros de medidas"),
+                    plural(data.photos.size, "foto", "fotos"), plural(data.custom.size, "exercício personalizado", "exercícios personalizados"),
+                ).joinToString(" · ") + ". " +
+                    "Tudo fica salvo neste aparelho: exporte um backup de vez em quando ou ative a sincronização. O arquivo é o mesmo do app web (PWA), então dá para levar os dados de um para o outro.",
             )
         }
         item {
@@ -229,6 +299,28 @@ fun SettingsScreen(data: AppData) {
     }
 
     if (calc) CalculatorSheet(data) { calc = false }
+    if (keySheet) AiKeySheet({ keySheet = false })
+    exportAsk?.let { how ->
+        val mb = PhotoStore.totalKb(data.photos) / 1024.0
+        Sheet({ exportAsk = null }, "Exportar backup") {
+            Column(Modifier.padding(horizontal = 16.dp).navigationBarsPadding()) {
+                Text(
+                    "Você tem ${data.photos.size} foto${if (data.photos.size > 1) "s" else ""} do progresso. Incluir no arquivo de backup? Com as fotos o arquivo fica maior; sem elas, as fotos continuam só neste aparelho.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(16.dp))
+                Button(onClick = {
+                    withPhotos = true; exportAsk = null
+                    if (how == "save") exportLauncher.launch(backupName) else shareBackup()
+                }, shapes = ButtonDefaults.shapes(), modifier = Modifier.fillMaxWidth()) { Text("Dados e fotos (~${fmt(mb * 1.37, 1)} MB)") }
+                OutlinedButton(onClick = {
+                    withPhotos = false; exportAsk = null
+                    if (how == "save") exportLauncher.launch(backupName) else shareBackup()
+                }, shapes = ButtonDefaults.shapes(), modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) { Text("Só os dados (sem fotos)") }
+                Spacer(Modifier.height(16.dp))
+            }
+        }
+    }
 }
 
 private fun toggle(title: String, sub: String, on: Boolean, set: (Boolean) -> Unit) =

@@ -17,6 +17,8 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -32,11 +34,13 @@ import androidx.compose.material.icons.automirrored.outlined.Assignment
 import androidx.compose.material.icons.automirrored.rounded.Assignment
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Insights
-import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material.icons.outlined.Accessibility
+import androidx.compose.material.icons.outlined.Restaurant
 import androidx.compose.material.icons.rounded.FitnessCenter
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Insights
-import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material.icons.rounded.Accessibility
+import androidx.compose.material.icons.rounded.Restaurant
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularWavyProgressIndicator
@@ -82,7 +86,15 @@ import app.ficha.logic.addRest
 import app.ficha.logic.clock
 import app.ficha.logic.stats
 import app.ficha.timer.RestNotifier
+import app.ficha.ui.screens.AchievementsScreen
+import app.ficha.ui.screens.AssistantScreen
+import app.ficha.ui.screens.BodyScreen
+import app.ficha.ui.screens.CameraScreen
+import app.ficha.ui.screens.CloudScreen
+import app.ficha.ui.screens.CoachScreen
+import app.ficha.ui.screens.DietScreen
 import app.ficha.ui.screens.ExerciseScreen
+import app.ficha.ui.screens.PhotosScreen
 import app.ficha.ui.screens.ExercisesScreen
 import app.ficha.ui.screens.HistoryScreen
 import app.ficha.ui.screens.ProgramScreen
@@ -102,8 +114,9 @@ private class Tab(val route: Route, val label: String, val icon: ImageVector, va
 private val TABS = listOf(
     Tab(Route.Today, "Hoje", Icons.Outlined.Home, Icons.Rounded.Home),
     Tab(Route.Routines, "Fichas", Icons.AutoMirrored.Outlined.Assignment, Icons.AutoMirrored.Rounded.Assignment),
+    Tab(Route.Diet, "Dieta", Icons.Outlined.Restaurant, Icons.Rounded.Restaurant),
     Tab(Route.History, "Histórico", Icons.Outlined.Insights, Icons.Rounded.Insights),
-    Tab(Route.Settings, "Ajustes", Icons.Outlined.Tune, Icons.Rounded.Tune),
+    Tab(Route.Body, "Corpo", Icons.Outlined.Accessibility, Icons.Rounded.Accessibility),
 )
 
 /** Hora atual que se atualiza sozinha (cronômetros). */
@@ -127,6 +140,7 @@ fun FichaRoot() {
         val app = remember { AppController(store, backStack, snackbar, scope, context) }
         val top = backStack.lastOrNull()
         val inWorkout = top == Route.Workout
+        val fullScreen = inWorkout || top is Route.Camera
 
         CompositionLocalProvider(LocalApp provides app) {
             WorkoutEffects(data, app)
@@ -139,7 +153,7 @@ fun FichaRoot() {
                 snackbarHost = { SnackbarHost(snackbar, Modifier.padding(bottom = if (data.active != null) 88.dp else 0.dp)) },
                 bottomBar = {
                     AnimatedVisibility(
-                        !inWorkout,
+                        !fullScreen,
                         enter = slideInVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) { it } + fadeIn(),
                         exit = slideOutVertically(MaterialTheme.motionScheme.fastSpatialSpec()) { it } + fadeOut(),
                     ) {
@@ -158,7 +172,9 @@ fun FichaRoot() {
                     }
                 },
             ) { pad ->
-                Box(Modifier.padding(bottom = pad.calculateBottomPadding()).fillMaxSize()) {
+                // A barra de abas já cobre a barra do sistema: as telas não somam esse recuo de novo
+                val bottom = PaddingValues(bottom = pad.calculateBottomPadding())
+                Box(Modifier.padding(bottom).consumeWindowInsets(bottom).fillMaxSize()) {
                     val spatial = MaterialTheme.motionScheme.defaultSpatialSpec<IntOffset>()
                     val effects = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
                     NavDisplay(
@@ -184,9 +200,17 @@ fun FichaRoot() {
                             entry<Route.Exercise> { ExerciseScreen(data, it.id) }
                             entry<Route.Session> { SessionScreen(data, it.id) }
                             entry<Route.Workout> { WorkoutScreen(data) }
+                            entry<Route.Diet> { DietScreen(data) }
+                            entry<Route.Body> { BodyScreen(data) }
+                            entry<Route.Photos> { PhotosScreen(data) }
+                            entry<Route.Camera> { CameraScreen(data, it.t, it.pose) }
+                            entry<Route.Assistant> { AssistantScreen(data) }
+                            entry<Route.Coach> { CoachScreen(data) }
+                            entry<Route.Achievements> { AchievementsScreen(data) }
+                            entry<Route.Cloud> { CloudScreen(data) }
                         },
                     )
-                    Dock(data, inWorkout, Modifier.align(Alignment.BottomCenter).let { if (inWorkout) it.navigationBarsPadding() else it })
+                    if (top !is Route.Camera) Dock(data, inWorkout, Modifier.align(Alignment.BottomCenter).let { if (inWorkout) it.navigationBarsPadding() else it })
                 }
             }
         }
@@ -238,6 +262,15 @@ private fun WorkoutEffects(data: AppData, app: AppController) {
 
     val open by MainActivity.openWorkout.collectAsStateWithLifecycle()
     LaunchedEffect(open) { if (open > 0 && app.data.active != null) app.go(Route.Workout) }
+    val route by MainActivity.openRoute.collectAsStateWithLifecycle()
+    LaunchedEffect(route) {
+        when (route?.substringBefore('#')) {
+            "hoje" -> app.tab(Route.Today)
+            "dieta" -> app.tab(Route.Diet)
+            "corpo" -> app.tab(Route.Body)
+            "ajustes" -> app.go(Route.Settings)
+        }
+    }
 }
 
 /** Barra flutuante do descanso e do treino em andamento (acima da barra de abas). */

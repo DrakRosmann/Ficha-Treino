@@ -93,6 +93,7 @@ import app.ficha.logic.REST_OPTIONS
 import app.ficha.logic.SET_TYPES
 import app.ficha.logic.addSet
 import app.ficha.logic.clock
+import app.ficha.logic.achCheck
 import app.ficha.logic.commitWorkout
 import app.ficha.logic.ex
 import app.ficha.logic.fmtInt
@@ -632,7 +633,11 @@ private fun FinishSheet(data: AppData, onDismiss: () -> Unit) {
 }
 
 private fun finish(app: AppController, updateRoutine: Boolean) {
-    val (nd, sess) = app.data.commitWorkout(updateRoutine) ?: return
+    val (nd0, sess0) = app.data.commitWorkout(updateRoutine) ?: return
+    // Conquistas deste treino aparecem no resumo
+    val (nd1, fresh) = nd0.achCheck()
+    val sess = if (fresh.isEmpty()) sess0 else sess0.copy(ach = fresh)
+    val nd = if (fresh.isEmpty()) nd1 else nd1.copy(sessions = nd1.sessions.map { if (it.id == sess.id) sess else it })
     app.update { nd }
     app.summaryFor = sess.id
     app.replace(Route.Session(sess.id))

@@ -12,6 +12,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LargeFlexibleTopAppBar
@@ -26,6 +27,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.ficha.ui.LocalApp
+import app.ficha.ui.Route
 
 /** Espaço no fim das listas para o dock (descanso / treino em andamento) não cobrir nada. */
 val BottomSpace = 120.dp
@@ -52,6 +54,11 @@ fun Screen(
     val nav: @Composable () -> Unit = {
         if (back) IconButton(onClick = { app.back() }) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Voltar") }
     }
+    // Nas abas, a engrenagem leva aos Ajustes
+    val acts: @Composable RowScope.() -> Unit = {
+        actions()
+        if (!back) IconButton(onClick = { app.go(Route.Settings) }) { Icon(Icons.Rounded.Settings, "Ajustes") }
+    }
     val titleC: @Composable () -> Unit = { Text(title, maxLines = 2, overflow = TextOverflow.Ellipsis) }
     val subC: (@Composable () -> Unit)? = subtitle?.let { s -> { Text(s, maxLines = 1, overflow = TextOverflow.Ellipsis) } }
     val colors = TopAppBarDefaults.topAppBarColors(
@@ -62,8 +69,8 @@ fun Screen(
         modifier = modifier.nestedScroll(scroll.nestedScrollConnection),
         contentWindowInsets = WindowInsets(0),
         topBar = {
-            if (large) LargeFlexibleTopAppBar(title = titleC, subtitle = subC, navigationIcon = nav, actions = actions, scrollBehavior = scroll, colors = colors)
-            else MediumFlexibleTopAppBar(title = titleC, subtitle = subC, navigationIcon = nav, actions = actions, scrollBehavior = scroll, colors = colors)
+            if (large) LargeFlexibleTopAppBar(title = titleC, subtitle = subC, navigationIcon = nav, actions = acts, scrollBehavior = scroll, colors = colors)
+            else MediumFlexibleTopAppBar(title = titleC, subtitle = subC, navigationIcon = nav, actions = acts, scrollBehavior = scroll, colors = colors)
         },
         floatingActionButton = fab,
         bottomBar = bottomBar,

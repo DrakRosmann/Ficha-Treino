@@ -137,8 +137,11 @@ fun TodayScreen(data: AppData) {
                 Icons.AutoMirrored.Rounded.ListAlt, "Nenhuma ficha ainda",
                 "Crie suas fichas de treino escolhendo os exercícios de cada dia, ou comece com um programa pronto (PPL, Upper/Lower, ABC…) e ajuste do seu jeito.",
             ) {
-                Button(onClick = { app.go(Route.Templates) }, shapes = ButtonDefaults.shapes(), modifier = Modifier.fillMaxWidth()) {
-                    Icon(Icons.Rounded.AutoAwesome, null); Spacer(Modifier.width(8.dp)); Text("Ver modelos prontos")
+                Button(onClick = { app.go(Route.Assistant) }, shapes = ButtonDefaults.shapes(), modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Rounded.AutoAwesome, null); Spacer(Modifier.width(8.dp)); Text("Montar meu treino")
+                }
+                OutlinedButton(onClick = { app.go(Route.Templates) }, shapes = ButtonDefaults.shapes(), modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.AutoMirrored.Rounded.ListAlt, null); Spacer(Modifier.width(8.dp)); Text("Ver modelos prontos")
                 }
                 OutlinedButton(onClick = { app.tab(Route.Routines) }, shapes = ButtonDefaults.shapes(), modifier = Modifier.fillMaxWidth()) {
                     Icon(Icons.Rounded.Add, null); Spacer(Modifier.width(8.dp)); Text("Criar minha ficha")
@@ -195,6 +198,9 @@ fun TodayScreen(data: AppData) {
                 }
             }
         }
+
+        item { DietTodayCard(data) { app.tab(Route.Diet) } }
+        if (a == null) item { CoachTodayBanner(data) }
 
         if (a == null && data.backupDue()) item {
             val n = data.unbackedSessions()

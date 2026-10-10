@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- O backup automático do Android leva os dados do app, mas não a chave da API (fica só neste aparelho) -->
+<full-backup-content>
+    <exclude domain="sharedpref" path="segredos.xml"/>
+</full-backup-content>
