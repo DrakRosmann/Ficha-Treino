@@ -11,6 +11,7 @@ import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
@@ -75,6 +76,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -112,6 +114,8 @@ import app.ficha.ui.screens.DietScreen
 import app.ficha.ui.screens.ExerciseScreen
 import app.ficha.ui.screens.PhotosScreen
 import app.ficha.ui.screens.PlansScreen
+import app.ficha.ui.screens.Welcome
+import app.ficha.ui.screens.WelcomeScreen
 import app.ficha.ads.Ads
 import app.ficha.ads.AdBanner
 import app.ficha.billing.Billing
@@ -172,14 +176,19 @@ fun FichaRoot() {
             // Na raiz de outra aba, voltar leva para Hoje (como nos apps do Android)
             BackHandler(enabled = backStack.size == 1 && backStack[0] != Route.Today) { app.tab(Route.Today) }
 
-            // Anúncios do plano grátis: consentimento e SDK; banner fora do treino, da câmera e do teclado
-            LaunchedEffect(Billing.state.plan) { if (!Billing.state.noAds) context.findActivity()?.let(Ads::start) }
-            LaunchedEffect(Unit) { Billing.events.collect { app.toast(it) } }
+            // Primeira abertura: boas-vindas por cima de tudo
+            var welcome by rememberSaveable { mutableStateOf(Welcome.needed(context, data)) }
+            val leaveWelcome = { r: Route? -> Welcome.done(context); welcome = false; r?.let(app::go) }
+
+            // Anúncios do plano grátis (só depois do primeiro dia): consentimento e SDK; banner fora do treino, da câmera e do teclado
             val now by rememberNow(60_000)
-            val banner = Ads.visible(now) && !fullScreen && top !is Route.Plans && !WindowInsets.isImeVisible
+            LaunchedEffect(Billing.state.plan, Ads.graceOver(now)) { if (!Billing.state.noAds) context.findActivity()?.let(Ads::start) }
+            LaunchedEffect(Unit) { Billing.events.collect { app.toast(it) } }
+            val banner = Ads.visible(now) && !welcome && !fullScreen && top !is Route.Plans && !WindowInsets.isImeVisible
 
             val root = backStack.firstOrNull()
             val onTab = { t: Tab -> if (root == t.route && backStack.size > 1) app.replace(t.route) else app.tab(t.route) }
+            Box(Modifier.fillMaxSize()) {
             Scaffold(
                 contentWindowInsets = WindowInsets(0),
                 snackbarHost = {
@@ -285,6 +294,19 @@ fun FichaRoot() {
                     if (wideBanner) AdBanner(Modifier.navigationBarsPadding())
                     }
                 }
+            }
+            AnimatedVisibility(
+                welcome,
+                enter = fadeIn(),
+                exit = fadeOut(MaterialTheme.motionScheme.defaultEffectsSpec()) + scaleOut(MaterialTheme.motionScheme.defaultSpatialSpec(), targetScale = 1.04f),
+            ) {
+                WelcomeScreen(
+                    onBuild = { leaveWelcome(Route.Assistant) },
+                    // Com o Ficha IA, já vai montar; sem ele, mostra a assinatura
+                    onAi = { leaveWelcome(if (Billing.state.ai) Route.Assistant else Route.Plans) },
+                    onSkip = { leaveWelcome(null) },
+                )
+            }
             }
         }
     }

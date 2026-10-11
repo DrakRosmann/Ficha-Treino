@@ -99,11 +99,14 @@ object Ads {
 
     /** Mostrar anúncios agora? */
     fun visible(now: Long = System.currentTimeMillis()): Boolean =
-        ready && !Billing.state.noAds && now >= adFreeUntil && now - firstRun >= GRACE_MS
+        ready && !Billing.state.noAds && now >= adFreeUntil && graceOver(now)
 
-    /** Consentimento e início do SDK (uma vez; só para quem está no plano grátis). */
+    /** Já passou o primeiro dia de uso (antes disso, nem o pedido de consentimento aparece). */
+    fun graceOver(now: Long = System.currentTimeMillis()) = now - firstRun >= GRACE_MS
+
+    /** Consentimento e início do SDK (uma vez; só para quem está no plano grátis, depois do primeiro dia). */
     fun start(activity: Activity) {
-        if (starting || ready || Billing.state.noAds) return
+        if (starting || ready || Billing.state.noAds || !graceOver()) return
         starting = true
         consent.requestConsentInfoUpdate(activity, ConsentRequestParameters.Builder().build(), {
             UserMessagingPlatform.loadAndShowConsentFormIfRequired(activity) {

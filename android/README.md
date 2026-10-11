@@ -37,6 +37,8 @@ PWA ficam sempre iguais.
 
 ## O que já existe
 
+- **Boas-vindas**: na primeira vez que o app abre, três caminhos — montar o treino com o assistente (grátis), montar
+  com IA (leva à assinatura do Ficha IA; quem já assina vai direto) ou continuar sem montar. Quem já tem dados não vê.
 - **Hoje**: semana com dias planejados e treinados, ficha do dia ou próxima da sequência, estatísticas e último treino.
 - **Fichas e programas**: criar, renomear, duplicar, pausar, reordenar, dias da semana (botões conectados do Expressive),
   séries/reps/descanso/observação por exercício e superséries/circuitos.
