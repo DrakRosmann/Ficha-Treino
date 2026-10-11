@@ -177,13 +177,9 @@ private fun Option(
             ShapeIcon(icon, shape = MaterialShapes.Cookie9Sided.toShape(), size = 56.dp, container = accent, content = onAccent)
             Spacer(Modifier.width(16.dp))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(title, style = MaterialTheme.typography.titleLargeEmphasized, modifier = Modifier.weight(1f, fill = false))
-                    if (badge != null) {
-                        Spacer(Modifier.width(8.dp))
-                        Pill(badge, accent, onAccent)
-                    }
-                }
+                // O selo fica acima do título: ao lado, ele quebrava o título em telas estreitas
+                if (badge != null) Pill(badge, accent, onAccent)
+                Text(title, style = MaterialTheme.typography.titleLargeEmphasized)
                 Text(text, style = MaterialTheme.typography.bodyMedium)
             }
             Spacer(Modifier.width(8.dp))
