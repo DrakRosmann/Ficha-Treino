@@ -100,7 +100,7 @@ Trocar de plano aproveita o tempo já pago (subir para a IA cobra a diferença; 
 
 ### Para publicar
 
-1. **Play Console**: crie o app `app.ficha` e, em *Monetizar → Assinaturas*, as assinaturas `ficha_apoio` e
+1. **Play Console**: crie o app `io.github.drakrosmann.ficha` e, em *Monetizar → Assinaturas*, as assinaturas `ficha_apoio` e
    `ficha_ia`, cada uma com um plano básico mensal (e, se quiser, um anual e um teste grátis — o app mostra todos).
    Sugestão de preços: Apoiador R$ 4,90/mês ou R$ 39,90/ano; Ficha IA R$ 19,90/mês ou R$ 169,90/ano.
 2. **AdMob**: crie o app e três blocos de anúncio — *Banner* (adaptável), *Nativo avançado* e *Premiado*. Em

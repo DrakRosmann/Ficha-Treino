@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ficha — Política de privacidade</title>
+<style>
+  :root { --bg: #fdfde8; --fg: #1d1f14; --muted: #5b5f4a; --accent: #4c6a00; --card: #f4f6c8; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #0e1013; --fg: #e6e8ec; --muted: #a2a796; --accent: #cdf250; --card: #1a1d14; } }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 720px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { font-size: 2rem; margin: 0 0 4px; }
+  h2 { font-size: 1.2rem; margin: 32px 0 8px; color: var(--accent); }
+  p, li { color: var(--fg); }
+  .muted { color: var(--muted); }
+  .card { background: var(--card); border-radius: 20px; padding: 16px 20px; margin: 16px 0; }
+  a { color: var(--accent); }
+  table { border-collapse: collapse; width: 100%; font-size: .95rem; }
+  td, th { text-align: left; padding: 8px 6px; border-bottom: 1px solid color-mix(in srgb, var(--muted) 30%, transparent); vertical-align: top; }
+</style>
+</head>
+<body>
+<main>
+<h1>Política de privacidade</h1>
+<p class="muted">Ficha — treino, dieta e evolução · última atualização: 11 de outubro de 2026</p>
+
+<div class="card">
+  <strong>Resumo:</strong> o Ficha não tem cadastro nem conta. Seus treinos, dieta, medidas e fotos ficam salvos no seu
+  aparelho. Só saem dele quando você liga a sincronização (criptografada, ninguém além de você consegue ler), quando
+  usa um recurso de inteligência artificial ou, no plano grátis, pelos anúncios do Google.
+</div>
+
+<h2>O que fica no seu aparelho</h2>
+<p>Fichas e programas, histórico de treinos, dieta, água, medidas corporais, perfil de treino, conquistas, fotos do
+progresso e preferências. Esses dados não são enviados a ninguém, a não ser nos casos abaixo. Você pode exportar um
+backup, importar e apagar tudo em <em>Ajustes → Seus dados</em>.</p>
+
+<h2>Sincronização entre aparelhos (opcional)</h2>
+<p>Se você ligar a sincronização, seus dados (sem as fotos do progresso) são criptografados no próprio aparelho com
+AES-GCM de 256 bits, usando o seu código de sincronização, antes de serem enviados ao servidor do Ficha (Cloudflare
+Workers). O servidor guarda apenas o arquivo criptografado e não tem como lê-lo nem conhece o seu código. Desligar a
+sincronização e escolher "apagar da nuvem" remove o arquivo do servidor.</p>
+
+<h2>Inteligência artificial (assinatura Ficha IA)</h2>
+<p>Quando você usa o Treinador IA, a montagem de treino com IA ou a dieta por foto/descrição, o app envia ao servidor
+do Ficha só o necessário para responder: um resumo dos seus registros (treinos, cargas, dieta, peso e medidas), o que
+você escreveu e, se for o caso, a foto do prato ou do rótulo. O servidor confere a sua assinatura no Google Play e
+repassa o pedido à Anthropic (Claude), que gera a resposta. O servidor guarda apenas contadores de uso (quantos
+pedidos e quanto do limite mensal foi usado), ligados a um identificador derivado da compra, sem o conteúdo. A
+Anthropic trata os dados conforme a sua
+<a href="https://www.anthropic.com/legal/privacy">política de privacidade</a> e não os usa para treinar modelos.</p>
+
+<h2>Anúncios (plano grátis)</h2>
+<p>No plano grátis, o app mostra anúncios do Google AdMob a partir do segundo dia de uso. O AdMob pode coletar o ID de
+publicidade do aparelho, informações sobre o aparelho e a interação com os anúncios, para exibir, medir e, se você
+permitir, personalizar anúncios. Onde a lei exige (como na União Europeia), o app pede o seu consentimento antes; você
+pode revê-lo em <em>Ajustes → Privacidade dos anúncios</em>. Para redefinir ou desativar o ID de publicidade, use as
+configurações do Android. Saiba mais em
+<a href="https://policies.google.com/technologies/partner-sites">Como o Google usa informações de apps parceiros</a>.
+Os assinantes (Apoiador ou Ficha IA) não veem anúncios e o SDK de anúncios não é iniciado para eles.</p>
+
+<h2>Compras</h2>
+<p>As assinaturas são processadas pelo Google Play. O Ficha não recebe dados do seu cartão; recebe apenas a
+confirmação da compra (um token), usada para liberar o plano e, no Ficha IA, para o servidor conferir a assinatura.</p>
+
+<h2>Outros serviços</h2>
+<table>
+  <tr><th>Recurso</th><th>O que é enviado</th><th>Para quem</th></tr>
+  <tr><td>Busca por código de barras</td><td>Só o número do código de barras</td><td>Open Food Facts</td></tr>
+  <tr><td>Leitor de código de barras</td><td>Processado no aparelho</td><td>Google Play Services (no aparelho)</td></tr>
+  <tr><td>Lembretes</td><td>Nada — agendados no próprio aparelho</td><td>—</td></tr>
+</table>
+
+<h2>Permissões</h2>
+<ul>
+  <li><strong>Câmera:</strong> fotos do progresso e foto do prato ou do rótulo (só quando você usa).</li>
+  <li><strong>Notificações e alarmes exatos:</strong> contagem do descanso entre as séries e lembretes.</li>
+  <li><strong>Internet:</strong> sincronização, IA, busca de alimentos e anúncios.</li>
+</ul>
+
+<h2>Crianças</h2>
+<p>O Ficha não é destinado a menores de 13 anos e não coleta conscientemente dados de crianças.</p>
+
+<h2>Seus direitos (LGPD)</h2>
+<p>Como os dados ficam no seu aparelho, você mesmo pode consultá-los, exportá-los e apagá-los a qualquer momento no
+app. Para apagar o arquivo da sincronização, use <em>Ajustes → Nuvem e lembretes</em>. Para qualquer dúvida ou pedido,
+abra uma conversa em <a href="https://github.com/DrakRosmann/Ficha-Treino/issues">github.com/DrakRosmann/Ficha-Treino/issues</a>.</p>
+
+<h2>Mudanças</h2>
+<p>Se esta política mudar, a nova versão será publicada nesta página com a data atualizada.</p>
+</main>
+</body>
+</html>

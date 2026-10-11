@@ -64,7 +64,7 @@ do que paga.
 
 | Variável | Padrão | O que é |
 |---|---|---|
-| `PLAY_PACKAGE` | `app.ficha` | Pacote do app no Google Play |
+| `PLAY_PACKAGE` | `io.github.drakrosmann.ficha` | Pacote do app no Google Play |
 | `AI_PRODUCT` | `ficha_ia` | ID da assinatura que libera a IA |
 | `AI_MODEL` | `claude-opus-5-5` | Modelo usado (o app não escolhe) |
 | `AI_MONTHLY_USD` | `2.5` | Gasto máximo de IA por assinante por mês, em US$ (renova todo dia 1º, UTC) |

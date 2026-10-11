@@ -279,7 +279,7 @@ async function aiAuth(req, env) {
 }
 
 async function playSubscription(env, token) {
-  const pkg = env.PLAY_PACKAGE || 'app.ficha', product = env.AI_PRODUCT || 'ficha_ia';
+  const pkg = env.PLAY_PACKAGE || 'io.github.drakrosmann.ficha', product = env.AI_PRODUCT || 'ficha_ia';
   const base = env.PLAY_API_BASE || 'https://androidpublisher.googleapis.com';
   const res = await fetch(`${base}/androidpublisher/v3/applications/${pkg}/purchases/subscriptionsv2/tokens/${encodeURIComponent(token)}`, {
     headers: { Authorization: 'Bearer ' + await googleToken(env) }

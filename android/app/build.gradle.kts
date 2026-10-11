@@ -16,6 +16,11 @@ val localProps = Properties().apply {
     rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
 }
 fun cfg(name: String, default: String): String = localProps.getProperty(name) ?: providers.gradleProperty(name).orNull ?: default
+// Chave de envio da Play Store: android/keystore.properties (fora do git) aponta para o .jks e as senhas.
+// Sem o arquivo, a release é assinada com a chave de debug (só para instalar e testar).
+val uploadProps = Properties().apply {
+    rootProject.file("keystore.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
+}
 fun q(s: String) = "\"" + s.replace("\"", "\\\"") + "\""
 
 android {
@@ -23,7 +28,8 @@ android {
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "app.ficha"
+        // Identificador na Play Store (permanente). O código continua no pacote app.ficha.
+        applicationId = "io.github.drakrosmann.ficha"
         minSdk = 26
         targetSdk = 37
         versionCode = 1
@@ -33,6 +39,15 @@ android {
         buildConfigField("String", "AD_NATIVE", q(cfg("ficha.admob.native", TEST_NATIVE)))
         buildConfigField("String", "AD_REWARDED", q(cfg("ficha.admob.rewarded", TEST_REWARDED)))
         buildConfigField("String", "SERVER", q(cfg("ficha.server", "")))
+    }
+
+    signingConfigs {
+        if (uploadProps.getProperty("storeFile") != null) create("upload") {
+            storeFile = file(uploadProps.getProperty("storeFile"))
+            storePassword = uploadProps.getProperty("storePassword")
+            keyAlias = uploadProps.getProperty("keyAlias")
+            keyPassword = uploadProps.getProperty("keyPassword")
+        }
     }
 
     buildTypes {
@@ -48,8 +63,8 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // Assinado com a chave de debug para dar para instalar direto pelo Android Studio / adb
-            signingConfig = signingConfigs.getByName("debug")
+            // Com keystore.properties: chave de envio da Play Store. Sem ele: chave de debug (instalar e testar).
+            signingConfig = signingConfigs.findByName("upload") ?: signingConfigs.getByName("debug")
         }
     }
     compileOptions {
