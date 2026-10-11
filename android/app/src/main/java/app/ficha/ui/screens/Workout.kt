@@ -6,6 +6,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.add
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -132,6 +134,7 @@ import app.ficha.ui.components.Seg
 import app.ficha.ui.components.SegmentedList
 import app.ficha.ui.components.ShapeIcon
 import app.ficha.ui.rememberNow
+import app.ficha.ui.sideGap
 import kotlinx.coroutines.launch
 
 @Composable
@@ -155,74 +158,78 @@ fun WorkoutScreen(data: AppData) {
     val haptic = LocalHapticFeedback.current
     val focus = LocalFocusManager.current
 
-    Scaffold(
-        contentWindowInsets = WindowInsets(0),
-        topBar = {
-            TopAppBar(
-                navigationIcon = { IconButton(onClick = { app.back() }) { Icon(Icons.Rounded.KeyboardArrowDown, "Minimizar") } },
-                title = {
-                    Text(
-                        a.name, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.clickable { app.prompt("Nome do treino", a.name) { n -> if (n.isNotBlank()) app.update { it.updateActive { w -> w.copy(name = n.trim()) } } } },
-                    )
-                },
-                actions = {
-                    Button(onClick = { finishing = true }, shapes = ButtonDefaults.shapes(), modifier = Modifier.padding(end = 8.dp)) { Text("Finalizar") }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
-            )
-        },
-        containerColor = MaterialTheme.colorScheme.surface,
-    ) { pad ->
-        LazyColumn(
-            Modifier.padding(top = pad.calculateTopPadding()).fillMaxSize(),
-            state = listState,
-            contentPadding = PaddingValues(bottom = 140.dp),
-        ) {
-            item(key = "meta") { WorkoutMeta(data) }
-            if (a.exercises.isEmpty()) item { EmptyState(Icons.Rounded.Add, "Treino livre", "Adicione os exercícios conforme for treinando.") }
-            val ssList = a.exercises.map { it.ss }
-            a.exercises.forEachIndexed { x, ex ->
-                item(key = ex.uid) {
-                    ExerciseCard(
-                        data, ex, x, ssList,
-                        onToggle = { i ->
-                            focus.clearFocus()
-                            val wasDone = ex.sets[i].done
-                            val res = app.data.toggleSet(x, i)
-                            app.update { res.data }
-                            if (!wasDone && res.missing == null) haptic.performHapticFeedback(HapticFeedbackType.Confirm)
-                            else if (wasDone) haptic.performHapticFeedback(HapticFeedbackType.ToggleOff)
-                            res.message?.let(app::toast)
-                            res.scrollTo?.let { k -> scope.launch { listState.animateScrollToItem(k + 1) } }
-                        },
-                        onMenu = { menuFor = x },
-                        onType = { i -> typeFor = x to i },
-                        onHowTo = { howTo = ex.exId },
-                        onRirHelp = { rirHelp = true },
-                    )
-                }
-            }
-            item(key = "foot") {
-                Column(Modifier.padding(horizontal = Gutter, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    FilledTonalButton(onClick = { adding = true }, shapes = ButtonDefaults.shapes(), modifier = Modifier.fillMaxWidth().height(ButtonDefaults.MediumContainerHeight)) {
-                        Icon(Icons.Rounded.Add, null); Spacer(Modifier.width(8.dp)); Text("Adicionar exercício", style = MaterialTheme.typography.titleMedium)
+    BoxWithConstraints {
+        val side = sideGap(maxWidth)
+        Scaffold(
+            contentWindowInsets = WindowInsets(0),
+            topBar = {
+                TopAppBar(
+                    windowInsets = TopAppBarDefaults.windowInsets.add(WindowInsets(left = side, right = side)),
+                    navigationIcon = { IconButton(onClick = { app.back() }) { Icon(Icons.Rounded.KeyboardArrowDown, "Minimizar") } },
+                    title = {
+                        Text(
+                            a.name, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.clickable { app.prompt("Nome do treino", a.name) { n -> if (n.isNotBlank()) app.update { it.updateActive { w -> w.copy(name = n.trim()) } } } },
+                        )
+                    },
+                    actions = {
+                        Button(onClick = { finishing = true }, shapes = ButtonDefaults.shapes(), modifier = Modifier.padding(end = 8.dp)) { Text("Finalizar") }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
+                )
+            },
+            containerColor = MaterialTheme.colorScheme.surface,
+        ) { pad ->
+            LazyColumn(
+                Modifier.padding(top = pad.calculateTopPadding()).fillMaxSize(),
+                state = listState,
+                contentPadding = PaddingValues(start = side, end = side, bottom = 140.dp),
+            ) {
+                item(key = "meta") { WorkoutMeta(data) }
+                if (a.exercises.isEmpty()) item { EmptyState(Icons.Rounded.Add, "Treino livre", "Adicione os exercícios conforme for treinando.") }
+                val ssList = a.exercises.map { it.ss }
+                a.exercises.forEachIndexed { x, ex ->
+                    item(key = ex.uid) {
+                        ExerciseCard(
+                            data, ex, x, ssList,
+                            onToggle = { i ->
+                                focus.clearFocus()
+                                val wasDone = ex.sets[i].done
+                                val res = app.data.toggleSet(x, i)
+                                app.update { res.data }
+                                if (!wasDone && res.missing == null) haptic.performHapticFeedback(HapticFeedbackType.Confirm)
+                                else if (wasDone) haptic.performHapticFeedback(HapticFeedbackType.ToggleOff)
+                                res.message?.let(app::toast)
+                                res.scrollTo?.let { k -> scope.launch { listState.animateScrollToItem(k + 1) } }
+                            },
+                            onMenu = { menuFor = x },
+                            onType = { i -> typeFor = x to i },
+                            onHowTo = { howTo = ex.exId },
+                            onRirHelp = { rirHelp = true },
+                        )
                     }
-                    OutlinedTextField(
-                        value = a.notes, onValueChange = { v -> app.update { it.updateActive { w -> w.copy(notes = v) } } },
-                        label = { Text("Anotações do treino") }, placeholder = { Text("Como foi o treino? Energia, dores, ajustes…") },
-                        minLines = 3, modifier = Modifier.fillMaxWidth(),
-                    )
-                    TextButton(
-                        onClick = {
-                            app.confirm("Descartar treino?", "Nada deste treino será salvo no histórico.", "Descartar", danger = true) {
-                                app.update { it.copy(active = null) }
-                                app.leave(Route.Workout)
-                            }
-                        },
-                        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { Icon(Icons.Rounded.Delete, null); Spacer(Modifier.width(8.dp)); Text("Descartar treino") }
+                }
+                item(key = "foot") {
+                    Column(Modifier.padding(horizontal = Gutter, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        FilledTonalButton(onClick = { adding = true }, shapes = ButtonDefaults.shapes(), modifier = Modifier.fillMaxWidth().height(ButtonDefaults.MediumContainerHeight)) {
+                            Icon(Icons.Rounded.Add, null); Spacer(Modifier.width(8.dp)); Text("Adicionar exercício", style = MaterialTheme.typography.titleMedium)
+                        }
+                        OutlinedTextField(
+                            value = a.notes, onValueChange = { v -> app.update { it.updateActive { w -> w.copy(notes = v) } } },
+                            label = { Text("Anotações do treino") }, placeholder = { Text("Como foi o treino? Energia, dores, ajustes…") },
+                            minLines = 3, modifier = Modifier.fillMaxWidth(),
+                        )
+                        TextButton(
+                            onClick = {
+                                app.confirm("Descartar treino?", "Nada deste treino será salvo no histórico.", "Descartar", danger = true) {
+                                    app.update { it.copy(active = null) }
+                                    app.leave(Route.Workout)
+                                }
+                            },
+                            colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Icon(Icons.Rounded.Delete, null); Spacer(Modifier.width(8.dp)); Text("Descartar treino") }
+                    }
                 }
             }
         }

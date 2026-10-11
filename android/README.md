@@ -67,6 +67,9 @@ PWA ficam sempre iguais.
 - **Ajustes**: tema do sistema/claro/escuro/preto (OLED), 10 cores com paleta tonal, vibrante ou expressiva,
   cores do papel de parede, opções de treino, chave da IA e backup (exportar com ou sem fotos, compartilhar,
   importar e desfazer).
+- **Telas grandes e dobráveis**: no dobrável aberto e no tablet, as abas vão para uma coluna lateral e as listas
+  (Fichas, Histórico, Exercícios, Modelos) abrem o detalhe ao lado, com o item aberto destacado; o resto fica numa
+  coluna central. Dobrar ou girar não reinicia o app: o treino, o descanso e o que estiver aberto continuam.
 
 Os recursos de IA usam o Claude (`claude-opus-5-5`) com a **sua** chave da API da Anthropic, salva só no aparelho
 (fica fora do backup do Android). Sem chave, tudo o mais funciona normalmente.

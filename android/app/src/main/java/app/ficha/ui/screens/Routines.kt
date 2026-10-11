@@ -84,6 +84,7 @@ import app.ficha.logic.targetUnit
 import app.ficha.logic.updateProgram
 import app.ficha.ui.AppController
 import app.ficha.ui.LocalApp
+import app.ficha.ui.LocalOpenDetail
 import app.ficha.ui.Route
 import app.ficha.ui.components.EmptyState
 import app.ficha.ui.components.ExerciseThumb
@@ -148,6 +149,7 @@ fun newProgram(app: AppController) {
 @Composable
 fun RoutinesScreen(data: AppData) {
     val app = LocalApp.current
+    val open = LocalOpenDetail.current
     var fabOpen by rememberSaveable { mutableStateOf(false) }
     Screen(
         title = "Fichas",
@@ -207,6 +209,7 @@ fun RoutinesScreen(data: AppData) {
                         },
                         trailing = if (p.active) null else ({ Pill("Pausado") }),
                         onClick = { app.go(Route.Program(p.id)) },
+                        selected = open == Route.Program(p.id),
                     )
                 })
             }
@@ -221,6 +224,7 @@ fun RoutinesScreen(data: AppData) {
                         key = r.id, headline = r.name.ifBlank { "Sem nome" }, supporting = "${daysLabel(r.days)} · ${r.items.size} exercícios",
                         leading = { LetterBadge(i, data.isScheduled(r) && dow in r.days) },
                         onClick = { app.go(Route.Routine(r.id)) },
+                        selected = open == Route.Routine(r.id),
                     )
                 })
             }
@@ -232,6 +236,7 @@ fun RoutinesScreen(data: AppData) {
 @Composable
 fun ProgramScreen(data: AppData, id: String) {
     val app = LocalApp.current
+    val open = LocalOpenDetail.current
     val p = data.programs.find { it.id == id }
     if (p == null) {
         androidx.compose.runtime.LaunchedEffect(Unit) { app.leave(Route.Program(id)) }
@@ -295,6 +300,7 @@ fun ProgramScreen(data: AppData, id: String) {
                         }
                     },
                     onClick = { app.go(Route.Routine(r.id)) },
+                    selected = open == Route.Routine(r.id),
                 )
             })
         }
@@ -363,6 +369,7 @@ private val TPL_FILTERS = listOf("" to "Todos", "Iniciante" to "Iniciante", "Int
 @Composable
 fun TemplatesScreen(data: AppData) {
     val app = LocalApp.current
+    val open = LocalOpenDetail.current
     var filter by rememberSaveable { mutableStateOf("") }
     val list = Catalog.templates.filter { filter.isEmpty() || it.level == filter || it.place == filter }
     Screen(title = "Modelos prontos", subtitle = "Escolha, veja as fichas e adicione aos seus", back = true) {
@@ -374,7 +381,8 @@ fun TemplatesScreen(data: AppData) {
         list.forEach { t ->
             item(key = t.id) {
                 Surface(
-                    onClick = { app.go(Route.Template(t.id)) }, shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surfaceContainer,
+                    onClick = { app.go(Route.Template(t.id)) }, shape = MaterialTheme.shapes.extraLarge,
+                    color = if (open == Route.Template(t.id)) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainer,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = Gutter, vertical = 6.dp),
                 ) {
                     Column(Modifier.padding(18.dp)) {

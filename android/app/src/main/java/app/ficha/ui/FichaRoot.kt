@@ -7,7 +7,10 @@ import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
@@ -23,6 +26,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -32,6 +40,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Assignment
 import androidx.compose.material.icons.automirrored.rounded.Assignment
+import androidx.compose.material.icons.automirrored.rounded.ListAlt
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Insights
 import androidx.compose.material.icons.outlined.Accessibility
@@ -54,6 +63,9 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.WideNavigationRail
+import androidx.compose.material3.WideNavigationRailDefaults
+import androidx.compose.material3.WideNavigationRailItem
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -75,9 +87,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation3.runtime.EntryProviderScope
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
+import androidx.navigation3.scene.Scene
 import androidx.navigation3.ui.NavDisplay
 import app.ficha.FichaApp
 import app.ficha.MainActivity
@@ -142,28 +156,35 @@ fun FichaRoot() {
         val inWorkout = top == Route.Workout
         val fullScreen = inWorkout || top is Route.Camera
 
-        CompositionLocalProvider(LocalApp provides app) {
+        val width = rememberWindowWidth()
+        val rail = width != WindowWidth.Compact
+        val twoPane = remember(width) { TwoPaneStrategy(width == WindowWidth.Expanded) }
+
+        CompositionLocalProvider(LocalApp provides app, LocalWindowWidth provides width) {
             WorkoutEffects(data, app)
             AppDialogs(app)
             // Na raiz de outra aba, voltar leva para Hoje (como nos apps do Android)
             BackHandler(enabled = backStack.size == 1 && backStack[0] != Route.Today) { app.tab(Route.Today) }
 
+            val root = backStack.firstOrNull()
+            val onTab = { t: Tab -> if (root == t.route && backStack.size > 1) app.replace(t.route) else app.tab(t.route) }
             Scaffold(
                 contentWindowInsets = WindowInsets(0),
-                snackbarHost = { SnackbarHost(snackbar, Modifier.padding(bottom = if (data.active != null) 88.dp else 0.dp)) },
+                snackbarHost = {
+                    SnackbarHost(snackbar, Modifier.padding(bottom = if (data.active != null) 88.dp else 0.dp).let { if (rail || fullScreen) it.navigationBarsPadding() else it })
+                },
                 bottomBar = {
-                    AnimatedVisibility(
+                    if (!rail) AnimatedVisibility(
                         !fullScreen,
                         enter = slideInVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) { it } + fadeIn(),
                         exit = slideOutVertically(MaterialTheme.motionScheme.fastSpatialSpec()) { it } + fadeOut(),
                     ) {
                         ShortNavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
-                            val root = backStack.firstOrNull()
                             TABS.forEach { t ->
                                 val selected = root == t.route
                                 ShortNavigationBarItem(
                                     selected = selected,
-                                    onClick = { if (selected && backStack.size > 1) app.replace(t.route) else app.tab(t.route) },
+                                    onClick = { onTab(t) },
                                     icon = { Icon(if (selected) t.selectedIcon else t.icon, null) },
                                     label = { Text(t.label) },
                                 )
@@ -174,46 +195,86 @@ fun FichaRoot() {
             ) { pad ->
                 // A barra de abas já cobre a barra do sistema: as telas não somam esse recuo de novo
                 val bottom = PaddingValues(bottom = pad.calculateBottomPadding())
-                Box(Modifier.padding(bottom).consumeWindowInsets(bottom).fillMaxSize()) {
-                    val spatial = MaterialTheme.motionScheme.defaultSpatialSpec<IntOffset>()
-                    val effects = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
-                    NavDisplay(
-                        backStack = backStack,
-                        onBack = { app.back() },
-                        transitionSpec = {
-                            if (app.tabSwitch) fadeIn(effects) togetherWith fadeOut(effects)
-                            else (slideInHorizontally(spatial) { it / 4 } + fadeIn(effects)) togetherWith (slideOutHorizontally(spatial) { -it / 8 } + fadeOut(effects))
-                        },
-                        popTransitionSpec = {
-                            (slideInHorizontally(spatial) { -it / 8 } + fadeIn(effects)) togetherWith (slideOutHorizontally(spatial) { it / 4 } + fadeOut(effects))
-                        },
-                        entryProvider = entryProvider<NavKey> {
-                            entry<Route.Today> { TodayScreen(data) }
-                            entry<Route.Routines> { RoutinesScreen(data) }
-                            entry<Route.History> { HistoryScreen(data) }
-                            entry<Route.Settings> { SettingsScreen(data) }
-                            entry<Route.Program> { ProgramScreen(data, it.id) }
-                            entry<Route.Routine> { RoutineScreen(data, it.id) }
-                            entry<Route.Templates> { TemplatesScreen(data) }
-                            entry<Route.Template> { TemplateScreen(data, it.id) }
-                            entry<Route.Exercises> { ExercisesScreen(data) }
-                            entry<Route.Exercise> { ExerciseScreen(data, it.id) }
-                            entry<Route.Session> { SessionScreen(data, it.id) }
-                            entry<Route.Workout> { WorkoutScreen(data) }
-                            entry<Route.Diet> { DietScreen(data) }
-                            entry<Route.Body> { BodyScreen(data) }
-                            entry<Route.Photos> { PhotosScreen(data) }
-                            entry<Route.Camera> { CameraScreen(data, it.t, it.pose) }
-                            entry<Route.Assistant> { AssistantScreen(data) }
-                            entry<Route.Coach> { CoachScreen(data) }
-                            entry<Route.Achievements> { AchievementsScreen(data) }
-                            entry<Route.Cloud> { CloudScreen(data) }
-                        },
-                    )
-                    if (top !is Route.Camera) Dock(data, inWorkout, Modifier.align(Alignment.BottomCenter).let { if (inWorkout) it.navigationBarsPadding() else it })
+                Row(Modifier.padding(bottom).consumeWindowInsets(bottom).fillMaxSize()) {
+                    // Tela larga: as abas ficam numa coluna à esquerda
+                    if (rail) AnimatedVisibility(
+                        !fullScreen,
+                        enter = expandHorizontally(MaterialTheme.motionScheme.defaultSpatialSpec()) + fadeIn(),
+                        exit = shrinkHorizontally(MaterialTheme.motionScheme.fastSpatialSpec()) + fadeOut(),
+                    ) {
+                        WideNavigationRail(
+                            colors = WideNavigationRailDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                            arrangement = Arrangement.Center,
+                        ) {
+                            TABS.forEach { t ->
+                                val selected = root == t.route
+                                WideNavigationRailItem(
+                                    selected = selected,
+                                    onClick = { onTab(t) },
+                                    icon = { Icon(if (selected) t.selectedIcon else t.icon, null) },
+                                    label = { Text(t.label) },
+                                    railExpanded = false,
+                                )
+                            }
+                        }
+                    }
+                    val side = if (rail && !fullScreen) Modifier.consumeWindowInsets(WindowInsets.systemBars.only(WindowInsetsSides.Start)) else Modifier
+                    Box(Modifier.weight(1f).fillMaxHeight().then(side)) {
+                        val spatial = MaterialTheme.motionScheme.defaultSpatialSpec<IntOffset>()
+                        val effects = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
+                        // Entre telas de dois painéis, só esmaece: deslizar a tela toda confunde quando metade continua igual
+                        fun AnimatedContentTransitionScope<Scene<NavKey>>.fade() = initialState is TwoPaneScene || targetState is TwoPaneScene
+                        NavDisplay(
+                            backStack = backStack,
+                            onBack = { app.back() },
+                            sceneStrategies = listOf(twoPane),
+                            transitionSpec = {
+                                if (app.tabSwitch || fade()) fadeIn(effects) togetherWith fadeOut(effects)
+                                else (slideInHorizontally(spatial) { it / 4 } + fadeIn(effects)) togetherWith (slideOutHorizontally(spatial) { -it / 8 } + fadeOut(effects))
+                            },
+                            popTransitionSpec = {
+                                if (fade()) fadeIn(effects) togetherWith fadeOut(effects)
+                                else (slideInHorizontally(spatial) { -it / 8 } + fadeIn(effects)) togetherWith (slideOutHorizontally(spatial) { it / 4 } + fadeOut(effects))
+                            },
+                            entryProvider = entryProvider<NavKey> {
+                                screen<Route.Today> { TodayScreen(data) }
+                                screen<Route.Routines>(Pane(EmptyPane(Icons.AutoMirrored.Rounded.Assignment, "Escolha uma ficha", "Ela abre aqui, ao lado da lista."))) { RoutinesScreen(data) }
+                                screen<Route.History>(Pane(EmptyPane(Icons.Rounded.Insights, "Escolha um treino", "Os detalhes aparecem aqui, ao lado da lista."))) { HistoryScreen(data) }
+                                screen<Route.Settings>(Pane()) { SettingsScreen(data) }
+                                screen<Route.Program>(Pane()) { ProgramScreen(data, it.id) }
+                                screen<Route.Routine>(Pane()) { RoutineScreen(data, it.id) }
+                                screen<Route.Templates>(Pane(EmptyPane(Icons.AutoMirrored.Rounded.ListAlt, "Escolha um modelo", "Veja as fichas dele aqui antes de adicionar."))) { TemplatesScreen(data) }
+                                screen<Route.Template>(Pane()) { TemplateScreen(data, it.id) }
+                                screen<Route.Exercises>(Pane(EmptyPane(Icons.Rounded.FitnessCenter, "Escolha um exercício", "A execução, os músculos e a sua evolução aparecem aqui."))) { ExercisesScreen(data) }
+                                screen<Route.Exercise>(Pane()) { ExerciseScreen(data, it.id) }
+                                screen<Route.Session>(Pane()) { SessionScreen(data, it.id) }
+                                screen<Route.Workout> { WorkoutScreen(data) }
+                                screen<Route.Diet> { DietScreen(data) }
+                                screen<Route.Body> { BodyScreen(data) }
+                                screen<Route.Photos> { PhotosScreen(data) }
+                                screen<Route.Camera> { CameraScreen(data, it.t, it.pose) }
+                                screen<Route.Assistant>(Pane()) { AssistantScreen(data) }
+                                screen<Route.Coach>(Pane()) { CoachScreen(data) }
+                                screen<Route.Achievements>(Pane()) { AchievementsScreen(data) }
+                                screen<Route.Cloud>(Pane()) { CloudScreen(data) }
+                            },
+                        )
+                        if (top !is Route.Camera) Dock(
+                            data, inWorkout,
+                            Modifier.align(Alignment.BottomCenter).widthIn(max = 600.dp).let { if (inWorkout || rail) it.navigationBarsPadding() else it },
+                        )
+                    }
                 }
             }
         }
+    }
+}
+
+/** Uma tela do app. Ela recebe o próprio controle (veja [AppController.scoped]); [pane] permite os dois painéis. */
+private inline fun <reified K : Route> EntryProviderScope<NavKey>.screen(pane: Pane? = null, noinline content: @Composable (K) -> Unit) {
+    entry<K>(metadata = { if (pane != null) mapOf(Pane.KEY to pane, Pane.ROUTE to it) else emptyMap() }) { key ->
+        val app = LocalApp.current
+        CompositionLocalProvider(LocalApp provides remember(key) { app.scoped(key) }) { content(key) }
     }
 }
 

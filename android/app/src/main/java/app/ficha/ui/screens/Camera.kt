@@ -117,6 +117,8 @@ fun CameraScreen(data: AppData, t: Long, pose0: String) {
     }
 
     fun shootNow() {
+        // A tela não é recriada ao girar ou dobrar o aparelho: a foto segue a rotação atual
+        previewView.display?.let { capture.targetRotation = it.rotation }
         capture.takePicture(ContextCompat.getMainExecutor(context), object : ImageCapture.OnImageCapturedCallback() {
             override fun onCaptureSuccess(image: ImageProxy) {
                 val raw = image.toBitmap()

@@ -59,6 +59,7 @@ import app.ficha.logic.relDay
 import app.ficha.logic.setMark
 import app.ficha.logic.suggestNext
 import app.ficha.ui.LocalApp
+import app.ficha.ui.LocalOpenDetail
 import app.ficha.ui.Route
 import app.ficha.ui.components.CardBox
 import app.ficha.ui.components.ChartPoint
@@ -79,6 +80,7 @@ import java.text.Collator
 @Composable
 fun ExercisesScreen(data: AppData) {
     val app = LocalApp.current
+    val open = LocalOpenDetail.current
     var q by rememberSaveable { mutableStateOf("") }
     var group by rememberSaveable { mutableStateOf("") }
     var creating by remember { mutableStateOf(false) }
@@ -129,6 +131,7 @@ fun ExercisesScreen(data: AppData) {
                                 supporting = e.equip + (if (e.custom) " · personalizado" else "") + if (e.id in done) " · com histórico" else "",
                                 leading = { ExerciseThumb(e, 52.dp) },
                                 onClick = { app.go(Route.Exercise(e.id)) },
+                                selected = open == Route.Exercise(e.id),
                             ),
                             i, list.size,
                         )

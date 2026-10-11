@@ -84,6 +84,7 @@ import app.ficha.logic.startOfWeek
 import app.ficha.logic.timeHM
 import app.ficha.logic.volume
 import app.ficha.ui.LocalApp
+import app.ficha.ui.LocalOpenDetail
 import app.ficha.ui.Route
 import app.ficha.ui.components.CardBox
 import app.ficha.ui.components.ConnectedChoice
@@ -103,6 +104,7 @@ import kotlin.random.Random
 @Composable
 fun HistoryScreen(data: AppData) {
     val app = LocalApp.current
+    val open = LocalOpenDetail.current
     var limit by rememberSaveable { mutableIntStateOf(40) }
     Screen(title = "Histórico") {
         if (data.sessions.isEmpty()) {
@@ -135,7 +137,7 @@ fun HistoryScreen(data: AppData) {
                 item(key = "m-$m") { SectionHeader(m.replaceFirstChar { it.uppercase() }) }
             }
             item(key = "l-$m") {
-                SegmentedList(list.map { s -> sessionSeg(data, s) { app.go(Route.Session(s.id)) } })
+                SegmentedList(list.map { s -> sessionSeg(data, s, open == Route.Session(s.id)) { app.go(Route.Session(s.id)) } })
             }
         }
         val more = data.sessions.size - limit
@@ -147,7 +149,7 @@ fun HistoryScreen(data: AppData) {
     }
 }
 
-private fun sessionSeg(data: AppData, s: Session, onClick: () -> Unit): Seg {
+private fun sessionSeg(data: AppData, s: Session, selected: Boolean, onClick: () -> Unit): Seg {
     val d = dateOf(s.start)
     val vol = s.volume()
     return Seg(
@@ -156,6 +158,7 @@ private fun sessionSeg(data: AppData, s: Session, onClick: () -> Unit): Seg {
         leading = { ShapeIcon(text = d.dayOfMonth.toString(), shape = MaterialShapes.Cookie6Sided.toShape()) },
         trailing = if (s.prs.isNotEmpty()) ({ Pill("${s.prs.size} PR", Fx.colors.goldContainer, Fx.colors.onGoldContainer) }) else null,
         onClick = onClick,
+        selected = selected,
     )
 }
 
@@ -264,6 +267,7 @@ private fun Legend(color: Color, text: String) {
 @Composable
 fun SessionScreen(data: AppData, id: String) {
     val app = LocalApp.current
+    val open = LocalOpenDetail.current
     val s = data.sessions.find { it.id == id }
     if (s == null) {
         LaunchedEffect(Unit) { app.leave(Route.Session(id)) }
@@ -323,7 +327,8 @@ fun SessionScreen(data: AppData, id: String) {
                     Column(Modifier.padding(horizontal = Gutter).padding(bottom = 2.dp)) {
                         Surface(
                             onClick = { app.go(Route.Exercise(e.exId)) }, shape = segmentShape(i, s.exercises.size),
-                            color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth(),
+                            color = if (open == Route.Exercise(e.exId)) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainer,
+                            modifier = Modifier.fillMaxWidth(),
                         ) {
                             Column(Modifier.padding(16.dp)) {
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {

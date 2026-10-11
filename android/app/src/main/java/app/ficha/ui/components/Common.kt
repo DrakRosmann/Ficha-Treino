@@ -65,6 +65,8 @@ class Seg(
     val supportingColor: Color? = null,
     val headlineColor: Color? = null,
     val headline: String,
+    /** Aberto no painel ao lado (dois painéis). */
+    val selected: Boolean = false,
 )
 
 /** Cor dos itens da lista segmentada; nos painéis (fundo mais claro) fica um tom acima. */
@@ -80,7 +82,9 @@ fun SegmentedList(rows: List<Seg>, modifier: Modifier = Modifier.padding(horizon
 @Composable
 fun SegRow(r: Seg, index: Int, count: Int) {
     val shapes = ListItemDefaults.segmentedShapes(index, count)
-    val colors = ListItemDefaults.segmentedColors(containerColor = LocalSegColor.current ?: MaterialTheme.colorScheme.surfaceContainer)
+    val colors = ListItemDefaults.segmentedColors(
+        containerColor = if (r.selected) MaterialTheme.colorScheme.secondaryContainer else LocalSegColor.current ?: MaterialTheme.colorScheme.surfaceContainer,
+    )
     val headline: @Composable () -> Unit = {
         Text(r.headline, maxLines = 2, overflow = TextOverflow.Ellipsis, color = r.headlineColor ?: Color.Unspecified)
     }

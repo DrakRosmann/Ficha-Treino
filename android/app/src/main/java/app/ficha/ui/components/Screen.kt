@@ -1,9 +1,12 @@
 package app.ficha.ui.components
 
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.add
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -22,12 +25,14 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.ficha.ui.LocalApp
 import app.ficha.ui.Route
+import app.ficha.ui.sideGap
 
 /** Espaço no fim das listas para o dock (descanso / treino em andamento) não cobrir nada. */
 val BottomSpace = 120.dp
@@ -65,23 +70,33 @@ fun Screen(
         containerColor = MaterialTheme.colorScheme.surface,
         scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
     )
-    Scaffold(
-        modifier = modifier.nestedScroll(scroll.nestedScrollConnection),
-        contentWindowInsets = WindowInsets(0),
-        topBar = {
-            if (large) LargeFlexibleTopAppBar(title = titleC, subtitle = subC, navigationIcon = nav, actions = acts, scrollBehavior = scroll, colors = colors)
-            else MediumFlexibleTopAppBar(title = titleC, subtitle = subC, navigationIcon = nav, actions = acts, scrollBehavior = scroll, colors = colors)
-        },
-        floatingActionButton = fab,
-        bottomBar = bottomBar,
-        containerColor = MaterialTheme.colorScheme.surface,
-    ) { pad ->
-        Box(Modifier.padding(top = pad.calculateTopPadding()).fillMaxSize()) {
-            LazyColumn(
-                state = listState,
-                contentPadding = PaddingValues(bottom = BottomSpace + pad.calculateBottomPadding()),
-                content = content,
-            )
+    // Tela larga: conteúdo numa coluna central, com o título alinhado a ela
+    BoxWithConstraints(modifier) {
+        val side = sideGap(maxWidth)
+        val insets = TopAppBarDefaults.windowInsets.add(WindowInsets(left = side, right = side))
+        Scaffold(
+            modifier = Modifier.nestedScroll(scroll.nestedScrollConnection),
+            contentWindowInsets = WindowInsets(0),
+            topBar = {
+                if (large) LargeFlexibleTopAppBar(title = titleC, subtitle = subC, navigationIcon = nav, actions = acts, scrollBehavior = scroll, colors = colors, windowInsets = insets)
+                else MediumFlexibleTopAppBar(title = titleC, subtitle = subC, navigationIcon = nav, actions = acts, scrollBehavior = scroll, colors = colors, windowInsets = insets)
+            },
+            // O botão sobe acima do dock do treino em andamento (e do descanso, quando aparece)
+            floatingActionButton = {
+                val a = app.data.active
+                val lift by animateDpAsState(if (a == null) 0.dp else if (a.rest != null) 164.dp else 80.dp, MaterialTheme.motionScheme.defaultSpatialSpec(), label = "fab")
+                Box(Modifier.padding(bottom = lift)) { fab() }
+            },
+            bottomBar = bottomBar,
+            containerColor = MaterialTheme.colorScheme.surface,
+        ) { pad ->
+            Box(Modifier.padding(top = pad.calculateTopPadding()).fillMaxSize()) {
+                LazyColumn(
+                    state = listState,
+                    contentPadding = PaddingValues(start = side, end = side, bottom = BottomSpace + pad.calculateBottomPadding()),
+                    content = content,
+                )
+            }
         }
     }
 }

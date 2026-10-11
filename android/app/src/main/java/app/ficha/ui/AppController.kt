@@ -49,36 +49,52 @@ class ConfirmRequest(val title: String, val text: String, val ok: String, val da
 
 class PromptRequest(val title: String, val initial: String, val label: String, val hint: String, val ok: String, val onOk: (String) -> Unit)
 
-/** Ações comuns das telas: dados, navegação, diálogos e avisos. */
-class AppController(
+/** Estado compartilhado entre o controle da raiz e os de cada tela. */
+private class UiState {
+    var tabSwitch = false
+    var achJob: Job? = null
+    var confirmRequest by mutableStateOf<ConfirmRequest?>(null)
+    var promptRequest by mutableStateOf<PromptRequest?>(null)
+    var summaryFor by mutableStateOf<String?>(null)
+}
+
+/**
+ * Ações comuns das telas: dados, navegação, diálogos e avisos.
+ * Cada tela recebe uma cópia com a sua rota em [origin]: em dois painéis, navegar a partir do
+ * painel da esquerda troca o da direita em vez de empilhar por cima dele.
+ */
+class AppController private constructor(
     val store: Store,
     val backStack: NavBackStack<NavKey>,
     val snackbar: SnackbarHostState,
     val scope: CoroutineScope,
     val context: Context,
+    private val ui: UiState,
+    private val origin: NavKey?,
 ) {
-    val data: AppData get() = store.value
-
-    init {
+    constructor(store: Store, backStack: NavBackStack<NavKey>, snackbar: SnackbarHostState, scope: CoroutineScope, context: Context) :
+        this(store, backStack, snackbar, scope, context, UiState(), null) {
         // Dados de antes das conquistas: marca as já cumpridas em silêncio
         if (data.ach == null) store.update { it.achCheck().first }
     }
 
+    /** O controle usado pela tela [key]. */
+    fun scoped(key: NavKey) = AppController(store, backStack, snackbar, scope, context, ui, key)
+
+    val data: AppData get() = store.value
+
     /** A última troca de tela foi pela barra de abas (animação diferente). */
-    var tabSwitch = false
-        private set
+    val tabSwitch: Boolean get() = ui.tabSwitch
 
     fun update(f: (AppData) -> AppData) {
         store.update(f)
         achSoon()
     }
 
-    private var achJob: Job? = null
-
     /** Depois das mudanças, confere as conquistas (no meio do treino, o resumo final mostra). */
     private fun achSoon() {
-        achJob?.cancel()
-        achJob = scope.launch {
+        ui.achJob?.cancel()
+        ui.achJob = scope.launch {
             delay(1200)
             if (data.active != null) return@launch
             val (nd, fresh) = data.achCheck()
@@ -91,28 +107,38 @@ class AppController(
         }
     }
 
+    /** Tira da pilha o que está acima da tela que pediu a navegação (no celular, ela já é a de cima). */
+    private fun trimToOrigin() {
+        val i = origin?.let { backStack.lastIndexOf(it) } ?: return
+        if (i >= 0) while (backStack.size > i + 1) backStack.removeAt(backStack.lastIndex)
+    }
+
     fun go(r: Route) {
-        tabSwitch = false
+        ui.tabSwitch = false
+        trimToOrigin()
         if (backStack.lastOrNull() != r) backStack.add(r)
     }
 
     fun back() {
-        tabSwitch = false
+        ui.tabSwitch = false
+        trimToOrigin()
         if (backStack.size > 1) backStack.removeAt(backStack.lastIndex)
     }
 
-    /** A tela [r] ficou sem dados (apagada, treino finalizado): sai dela se ainda for a de cima. */
+    /** A tela [r] ficou sem dados (apagada, treino finalizado): sai dela se ainda estiver à vista. */
     fun leave(r: Route) {
+        if (origin == r) trimToOrigin()
         if (backStack.lastOrNull() == r) back()
     }
 
     /** Volta até a tela [r] se ela estiver na pilha; senão, troca a de cima por ela. */
     fun replace(r: Route) {
-        tabSwitch = false
+        ui.tabSwitch = false
         val i = backStack.indexOf(r)
         if (i >= 0) {
             while (backStack.size > i + 1) backStack.removeAt(backStack.lastIndex)
         } else {
+            trimToOrigin()
             if (backStack.size > 1) backStack.removeAt(backStack.lastIndex)
             backStack.add(r)
         }
@@ -120,16 +146,16 @@ class AppController(
 
     fun tab(r: Route) {
         if (backStack.size == 1 && backStack[0] == r) return
-        tabSwitch = true
+        ui.tabSwitch = true
         backStack.add(r)
         while (backStack.size > 1) backStack.removeAt(0)
     }
 
-    var confirmRequest by mutableStateOf<ConfirmRequest?>(null)
-    var promptRequest by mutableStateOf<PromptRequest?>(null)
+    var confirmRequest by ui::confirmRequest
+    var promptRequest by ui::promptRequest
 
     /** Treino recém-finalizado: a tela da sessão mostra o resumo (com confete) uma vez. */
-    var summaryFor by mutableStateOf<String?>(null)
+    var summaryFor by ui::summaryFor
 
     fun confirm(title: String, text: String = "", ok: String = "Confirmar", danger: Boolean = false, onOk: () -> Unit) {
         confirmRequest = ConfirmRequest(title, text, ok, danger, onOk)
