@@ -16,6 +16,9 @@ anthropic = "2.71.0"
 camerax = "1.6.2"
 codeScanner = "16.1.0"
 exif = "1.4.2"
+playAds = "25.5.0"
+ump = "4.0.0"
+billing = "9.1.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -42,6 +45,9 @@ androidx-camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycl
 androidx-camera-view = { group = "androidx.camera", name = "camera-view", version.ref = "camerax" }
 play-services-code-scanner = { group = "com.google.android.gms", name = "play-services-code-scanner", version.ref = "codeScanner" }
 androidx-exifinterface = { group = "androidx.exifinterface", name = "exifinterface", version.ref = "exif" }
+play-services-ads = { group = "com.google.android.gms", name = "play-services-ads", version.ref = "playAds" }
+user-messaging-platform = { group = "com.google.android.ump", name = "user-messaging-platform", version.ref = "ump" }
+billing-ktx = { group = "com.android.billingclient", name = "billing-ktx", version.ref = "billing" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

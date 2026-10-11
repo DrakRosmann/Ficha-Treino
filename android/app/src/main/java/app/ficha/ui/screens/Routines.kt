@@ -90,6 +90,7 @@ import app.ficha.ui.components.EmptyState
 import app.ficha.ui.components.ExerciseThumb
 import app.ficha.ui.components.Gutter
 import app.ficha.ui.components.Hint
+import app.ficha.ui.components.listAd
 import app.ficha.ui.components.Pill
 import app.ficha.ui.components.Screen
 import app.ficha.ui.components.SectionHeader
@@ -229,6 +230,7 @@ fun RoutinesScreen(data: AppData) {
                 })
             }
         }
+        listAd("fichas")
         item { Hint("Toque num programa para ver as fichas dele. Use o botão + para criar programas e fichas.", center = true) }
     }
 }

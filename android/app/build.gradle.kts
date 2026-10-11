@@ -1,8 +1,22 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
 }
+
+// IDs do AdMob e endereço do servidor (Worker) da IA: em local.properties ou ~/.gradle/gradle.properties
+// (veja o README). Sem eles, a build usa os anúncios de teste do Google e fica sem IA.
+val TEST_ADMOB_APP = "ca-app-pub-3940256099942544~3347511713"
+val TEST_BANNER = "ca-app-pub-3940256099942544/9214589741"
+val TEST_NATIVE = "ca-app-pub-3940256099942544/2247696110"
+val TEST_REWARDED = "ca-app-pub-3940256099942544/5224354917"
+val localProps = Properties().apply {
+    rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
+}
+fun cfg(name: String, default: String): String = localProps.getProperty(name) ?: providers.gradleProperty(name).orNull ?: default
+fun q(s: String) = "\"" + s.replace("\"", "\\\"") + "\""
 
 android {
     namespace = "app.ficha"
@@ -14,9 +28,22 @@ android {
         targetSdk = 37
         versionCode = 1
         versionName = "1.0"
+        manifestPlaceholders["admobAppId"] = cfg("ficha.admob.app", TEST_ADMOB_APP)
+        buildConfigField("String", "AD_BANNER", q(cfg("ficha.admob.banner", TEST_BANNER)))
+        buildConfigField("String", "AD_NATIVE", q(cfg("ficha.admob.native", TEST_NATIVE)))
+        buildConfigField("String", "AD_REWARDED", q(cfg("ficha.admob.rewarded", TEST_REWARDED)))
+        buildConfigField("String", "SERVER", q(cfg("ficha.server", "")))
     }
 
     buildTypes {
+        debug {
+            // Debug: sempre anúncios de teste do Google e o servidor local (adb reverse tcp:8787 tcp:8787)
+            manifestPlaceholders["admobAppId"] = TEST_ADMOB_APP
+            buildConfigField("String", "AD_BANNER", q(TEST_BANNER))
+            buildConfigField("String", "AD_NATIVE", q(TEST_NATIVE))
+            buildConfigField("String", "AD_REWARDED", q(TEST_REWARDED))
+            buildConfigField("String", "SERVER", q(cfg("ficha.server.debug", "http://localhost:8787")))
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
@@ -31,6 +58,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     androidResources {
         // As fotos já estão em WebP: comprimir de novo só deixaria o app mais lento para abrir
@@ -93,6 +121,9 @@ dependencies {
     implementation(libs.androidx.camera.view)
     implementation(libs.play.services.code.scanner)
     implementation(libs.androidx.exifinterface)
+    implementation(libs.play.services.ads)
+    implementation(libs.user.messaging.platform)
+    implementation(libs.billing.ktx)
     debugImplementation(libs.androidx.compose.ui.tooling)
 }
 
@@ -103,6 +134,7 @@ kotlin {
             "androidx.compose.material3.ExperimentalMaterial3Api",
             "androidx.compose.material3.ExperimentalMaterial3ExpressiveApi",
             "androidx.compose.foundation.ExperimentalFoundationApi",
+            "androidx.compose.foundation.layout.ExperimentalLayoutApi",
             "androidx.compose.animation.ExperimentalAnimationApi",
             "androidx.compose.ui.text.ExperimentalTextApi",
         )

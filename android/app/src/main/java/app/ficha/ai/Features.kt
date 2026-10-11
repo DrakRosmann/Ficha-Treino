@@ -95,18 +95,18 @@ data class AiLabel(
 )
 
 object FoodAI {
-    suspend fun meal(key: String, text: String?, imageB64: String?): AiMeal {
+    suspend fun meal(token: String, text: String?, imageB64: String?): AiMeal {
         val parts = buildList {
             if (imageB64 != null) add(Claude.Part.Image(imageB64))
             add(Claude.Part.Text(if (text != null) "Refeição: $text" else "Estime os alimentos e as quantidades deste prato pela foto (use o tamanho do prato e dos talheres como referência)."))
         }
-        val out = Claude.run(key, MEAL_AI_SYSTEM, listOf(Claude.Msg(true, parts)), "low", 16000, MEAL_AI_SCHEMA)
+        val out = Claude.run(token, MEAL_AI_SYSTEM, listOf(Claude.Msg(true, parts)), "low", 16000, MEAL_AI_SCHEMA)
         return json.decodeFromJsonElement(AiMeal.serializer(), parse(out))
     }
 
-    suspend fun label(key: String, imageB64: String): AiLabel {
+    suspend fun label(token: String, imageB64: String): AiLabel {
         val parts = listOf(Claude.Part.Image(imageB64), Claude.Part.Text("Leia a tabela nutricional deste rótulo."))
-        val out = Claude.run(key, LABEL_AI_SYSTEM, listOf(Claude.Msg(true, parts)), "low", 16000, LABEL_AI_SCHEMA)
+        val out = Claude.run(token, LABEL_AI_SYSTEM, listOf(Claude.Msg(true, parts)), "low", 16000, LABEL_AI_SCHEMA)
         return json.decodeFromJsonElement(AiLabel.serializer(), parse(out))
     }
 }
@@ -183,10 +183,10 @@ ${catalog(d, p)}"""
         return "Monte as 3 opções de programa para esta pessoa:\n" + lines.joinToString("\n") { "- $it" }
     }
 
-    suspend fun generate(key: String, d: AppData, p: Profile, onProgress: (thinking: Boolean, chars: Int) -> Unit): AsstAiResult {
+    suspend fun generate(token: String, d: AppData, p: Profile, onProgress: (thinking: Boolean, chars: Int) -> Unit): AsstAiResult {
         var chars = 0
         val text = Claude.run(
-            key, system(d, p), listOf(Claude.Msg(true, listOf(Claude.Part.Text(user(p))))), "medium", 32000, ASST_SCHEMA, cache = true,
+            token, system(d, p), listOf(Claude.Msg(true, listOf(Claude.Part.Text(user(p))))), "medium", 32000, ASST_SCHEMA, cache = true,
             onText = { chars += it.length; onProgress(false, chars) }, onThinking = { onProgress(true, 0) },
         )
         val plan = json.decodeFromJsonElement(AiPlan.serializer(), parse(text))
@@ -329,9 +329,9 @@ object CoachAI {
         return L.joinToString("\n\n")
     }
 
-    suspend fun report(key: String, d: AppData): CoachReportData {
+    suspend fun report(token: String, d: AppData): CoachReportData {
         val text = Claude.run(
-            key, "$COACH_SYSTEM\n\n# Dados do usuário\n${context(d)}",
+            token, "$COACH_SYSTEM\n\n# Dados do usuário\n${context(d)}",
             listOf(Claude.Msg(true, listOf(Claude.Part.Text("Faça o relatório da minha semana de treino e dieta: compare com as semanas anteriores e diga o que fazer na próxima.")))),
             "medium", 16000, COACH_SCHEMA, cache = true,
         )
@@ -339,7 +339,7 @@ object CoachAI {
     }
 
     /** Conversa: começa pelo usuário e alterna os papéis (mensagens seguidas do mesmo lado são juntadas). */
-    suspend fun chat(key: String, d: AppData, history: List<app.ficha.data.ChatMsg>, onText: (String) -> Unit): String {
+    suspend fun chat(token: String, d: AppData, history: List<app.ficha.data.ChatMsg>, onText: (String) -> Unit): String {
         val msgs = mutableListOf<Pair<Boolean, StringBuilder>>()
         for (m in history) {
             val user = m.r == "u"
@@ -348,7 +348,7 @@ object CoachAI {
             else msgs += user to StringBuilder(m.x)
         }
         return Claude.run(
-            key, "$COACH_SYSTEM\n\n# Dados do usuário\n${context(d)}",
+            token, "$COACH_SYSTEM\n\n# Dados do usuário\n${context(d)}",
             msgs.map { (u, t) -> Claude.Msg(u, listOf(Claude.Part.Text(t.toString()))) },
             "low", 8000, null, cache = true, onText = onText,
         )

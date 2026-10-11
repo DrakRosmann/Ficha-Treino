@@ -42,6 +42,12 @@
             </intent-filter>
         </activity>
 
+        <!-- AdMob: o ID do app vem do build (de teste, sem configurar) -->
+        <meta-data android:name="com.google.android.gms.ads.APPLICATION_ID" android:value="${admobAppId}"/>
+        <!-- Inicia o SDK de anúncios só depois do consentimento (ver ads/Ads.kt) -->
+        <meta-data android:name="com.google.android.gms.ads.flag.OPTIMIZE_INITIALIZATION" android:value="true"/>
+        <meta-data android:name="com.google.android.gms.ads.flag.OPTIMIZE_AD_LOADING" android:value="true"/>
+
         <receiver android:name=".timer.RestAlarmReceiver" android:exported="false"/>
         <receiver android:name=".sync.ReminderReceiver" android:exported="false">
             <intent-filter>

@@ -1,17 +1,22 @@
 package app.ficha.ui.components
 
 import android.content.Context
-import android.content.Intent
 import android.graphics.Bitmap
 import android.net.ConnectivityManager
-import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
+import app.ficha.ui.Route
+import app.ficha.billing.Billing
+import androidx.compose.ui.Alignment
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.Icons
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.AlertDialog
@@ -19,23 +24,13 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ContainedLoadingIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import app.ficha.ai.Claude
 import app.ficha.ui.LocalApp
-import app.ficha.ui.screens.Sheet
 import java.io.ByteArrayOutputStream
 import java.util.Base64
 import kotlin.math.max
@@ -51,46 +46,19 @@ fun jpegB64ForAi(b: Bitmap): String {
     return Base64.getEncoder().encodeToString(out.toByteArray())
 }
 
-/** Chave da API da Anthropic: salva só neste aparelho (fica fora do backup). */
+/** Convite para o Ficha IA onde há um recurso de IA e a pessoa não assina. */
 @Composable
-fun AiKeySheet(onDismiss: () -> Unit, onSaved: (() -> Unit)? = null) {
+fun AiUpsell(text: String, modifier: Modifier = Modifier) {
     val app = LocalApp.current
-    val context = LocalContext.current
-    val has = Claude.key(context).isNotEmpty()
-    var v by remember { mutableStateOf("") }
-    Sheet(onDismiss, "Chave da API da Anthropic") {
-        Column(Modifier.padding(horizontal = 16.dp).navigationBarsPadding().imePadding(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(
-                "Para usar a IA, crie uma chave em platform.claude.com (Settings → API keys) e cole aqui. O uso é cobrado pela Anthropic na sua conta — cada geração custa em torno de US$ 0,15 a 0,40.",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            TextButton(onClick = { runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://platform.claude.com"))) } }) { Text("Abrir platform.claude.com") }
-            OutlinedTextField(
-                v, { v = it.trim() }, singleLine = true, label = { Text("Chave (começa com sk-ant-)") },
-                placeholder = { Text(if (has) "Chave salva — cole outra para trocar" else "sk-ant-…") },
-                visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth(),
-            )
-            Text(
-                "A chave fica salva só neste aparelho e não vai para o backup. Os dados usados pela IA são enviados à Anthropic.",
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Button(onClick = {
-                when {
-                    v.isEmpty() -> app.toast("Cole a chave da API")
-                    !v.startsWith("sk-ant-") -> app.toast("A chave deve começar com sk-ant-")
-                    else -> {
-                        Claude.setKey(context, v)
-                        app.toast("Chave salva neste aparelho")
-                        onDismiss()
-                        onSaved?.invoke()
-                    }
-                }
-            }, shapes = ButtonDefaults.shapes(), modifier = Modifier.fillMaxWidth()) { Text("Salvar") }
-            if (has) OutlinedButton(
-                onClick = { Claude.setKey(context, ""); app.toast("Chave removida"); onDismiss() }, shapes = ButtonDefaults.shapes(),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error), modifier = Modifier.fillMaxWidth(),
-            ) { Text("Remover chave") }
-            Spacer(Modifier.height(12.dp))
+    Surface(color = MaterialTheme.colorScheme.tertiaryContainer, contentColor = MaterialTheme.colorScheme.onTertiaryContainer, shape = MaterialTheme.shapes.extraLarge, modifier = modifier.fillMaxWidth()) {
+        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Rounded.AutoAwesome, null)
+                Spacer(Modifier.width(10.dp))
+                Text("Recurso do Ficha IA", style = MaterialTheme.typography.titleMediumEmphasized)
+            }
+            Text(text, style = MaterialTheme.typography.bodyMedium)
+            Button(onClick = { app.go(Route.Plans) }, shapes = ButtonDefaults.shapes()) { Text("Conhecer o Ficha IA") }
         }
     }
 }
@@ -108,10 +76,10 @@ fun AiBusyDialog(title: String, subtitle: String = "Leva alguns segundos", onCan
     )
 }
 
-/** Confere chave e internet antes de usar a IA. Sem chave, pede a chave. */
-fun aiReady(context: Context, toast: (String) -> Unit, askKey: () -> Unit): String? {
-    val k = Claude.key(context)
-    if (k.isEmpty()) { askKey(); toast("Salve a chave da API e tente de novo"); return null }
+/** Confere a assinatura e a internet antes de usar a IA. Sem o Ficha IA, [needPlan] mostra os planos. */
+fun aiReady(context: Context, toast: (String) -> Unit, needPlan: () -> Unit): String? {
+    val t = Billing.state.aiToken
+    if (!Billing.state.ai || t == null) { needPlan(); toast("A IA faz parte do plano Ficha IA"); return null }
     if (!online(context)) { toast("Sem internet — a IA precisa de conexão"); return null }
-    return k
+    return t
 }

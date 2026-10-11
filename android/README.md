@@ -65,14 +65,69 @@ PWA ficam sempre iguais.
 - **Nuvem**: sincronização criptografada de ponta a ponta com o mesmo servidor (Cloudflare Worker) do PWA.
 - **Lembretes**: treino do dia, água, refeições, pesagem e backup, agendados no próprio aparelho (sem servidor).
 - **Ajustes**: tema do sistema/claro/escuro/preto (OLED), 10 cores com paleta tonal, vibrante ou expressiva,
-  cores do papel de parede, opções de treino, chave da IA e backup (exportar com ou sem fotos, compartilhar,
+  cores do papel de parede, opções de treino, assinatura e backup (exportar com ou sem fotos, compartilhar,
   importar e desfazer).
 - **Telas grandes e dobráveis**: no dobrável aberto e no tablet, as abas vão para uma coluna lateral e as listas
   (Fichas, Histórico, Exercícios, Modelos) abrem o detalhe ao lado, com o item aberto destacado; o resto fica numa
   coluna central. Dobrar ou girar não reinicia o app: o treino, o descanso e o que estiver aberto continuam.
 
-Os recursos de IA usam o Claude (`claude-opus-5-5`) com a **sua** chave da API da Anthropic, salva só no aparelho
-(fica fora do backup do Android). Sem chave, tudo o mais funciona normalmente.
+- **Anúncios e assinaturas**: plano grátis com anúncios discretos; **Apoiador** (sem anúncios) e **Ficha IA**
+  (IA + sem anúncios) pelo Google Play. Veja abaixo.
+
+Os recursos de IA usam o Claude (`claude-opus-5-5`) e são do plano **Ficha IA**: o app manda o pedido ao servidor
+do Ficha (o mesmo Worker da sincronização), que confere a assinatura no Google Play e usa a chave da Anthropic dele.
+Sem a assinatura, tudo o mais funciona normalmente.
+
+## Anúncios e assinaturas
+
+**Plano grátis**, com anúncios que não atrapalham:
+- banner no rodapé (acima das abas; ao lado da coluna de abas no dobrável aberto);
+- um card de anúncio nativo, com o visual do app, no Histórico, na Dieta e na lista de Fichas;
+- vídeo opcional em Ajustes → Assinatura que dá **24 horas sem anúncios**.
+
+Nunca aparecem anúncios no treino, na câmera, com o teclado aberto, na tela de planos nem **no primeiro dia de uso**
+(`GRACE_MS` em `ads/Ads.kt`). Antes de carregar qualquer anúncio, o app pede o consentimento onde a lei exige
+(UMP do Google: GDPR/LGPD), e Ajustes ganha "Privacidade dos anúncios" quando precisa.
+
+**Assinaturas** (Google Play Billing), em Ajustes → Assinatura:
+- **Apoiador** (`ficha_apoio`): sem anúncios, para apoiar o app;
+- **Ficha IA** (`ficha_ia`): Treinador IA, montar treino com IA, dieta por foto/descrição e rótulos, e sem anúncios.
+  Tem um limite de uso justo por mês, controlado pelo servidor (veja `server/README.md` → IA para assinantes).
+
+Trocar de plano aproveita o tempo já pago (subir para a IA cobra a diferença; voltar para Apoiador vale na renovação).
+
+### Para publicar
+
+1. **Play Console**: crie o app `app.ficha` e, em *Monetizar → Assinaturas*, as assinaturas `ficha_apoio` e
+   `ficha_ia`, cada uma com um plano básico mensal (e, se quiser, um anual e um teste grátis — o app mostra todos).
+   Sugestão de preços: Apoiador R$ 4,90/mês ou R$ 39,90/ano; Ficha IA R$ 19,90/mês ou R$ 169,90/ano.
+2. **AdMob**: crie o app e três blocos de anúncio — *Banner* (adaptável), *Nativo avançado* e *Premiado*. Em
+   *Privacidade e mensagens*, crie a mensagem de consentimento (GDPR) para o UMP mostrar.
+3. **Servidor**: publique o Worker com a IA configurada (`server/README.md` → IA para assinantes).
+4. Coloque os IDs em `android/local.properties` (fica fora do git) ou em `~/.gradle/gradle.properties`:
+
+```properties
+ficha.admob.app=ca-app-pub-XXXXXXXX~YYYYYYYY
+ficha.admob.banner=ca-app-pub-XXXXXXXX/1111111111
+ficha.admob.native=ca-app-pub-XXXXXXXX/2222222222
+ficha.admob.rewarded=ca-app-pub-XXXXXXXX/3333333333
+ficha.server=https://ficha-sync.seu-nome.workers.dev
+```
+
+Sem eles, a build usa os anúncios **de teste** do Google e fica sem IA. A build de debug sempre usa os anúncios de
+teste e o servidor `http://localhost:8787` (troque com `ficha.server.debug`).
+
+5. Publique uma **política de privacidade** (anúncios, consentimento, IA e sincronização) e preencha a *Segurança
+   dos dados* no Play Console: o app coleta o ID de publicidade (AdMob) e envia à IA um resumo dos registros só
+   quando a pessoa usa um recurso de IA.
+
+As compras só funcionam com o app instalado pela Play Store (faixa de teste interno) e uma conta de teste
+cadastrada no Play Console.
+
+### Testar sem a Play Store
+
+Na build de debug, Ajustes → Assinatura tem **Simular plano**: Grátis, Apoiador ou IA. No plano IA, o app usa o token
+`dev-token`; rode o Worker local (`npx wrangler dev`) com `DEV_TOKENS=dev-token` e `adb reverse tcp:8787 tcp:8787`.
 
 ### Testar a sincronização com um servidor local
 
@@ -96,7 +151,8 @@ e use `http://localhost:8787` como endereço em Ajustes → Nuvem e lembretes.
 | `app/src/main/java/app/ficha/ai/` | Chamadas ao Claude (SDK Java da Anthropic) e os recursos de IA |
 | `app/src/main/java/app/ficha/sync/` | Sincronização criptografada (igual ao `cloud.js`) e lembretes locais |
 | `app/src/main/java/app/ficha/photos/`, `share/` | Fotos do progresso e imagens para os Stories |
-| `app/src/debug/` | Só na build de debug: permite servidor de sincronização local por `http://` |
+| `app/src/main/java/app/ficha/ads/`, `billing/` | Anúncios (AdMob + consentimento UMP) e assinaturas (Google Play Billing) |
+| `app/src/debug/` | Só na build de debug: permite servidor local (sincronização e IA) por `http://` |
 | `app/src/main/assets/data/` | Exercícios, modelos, mapa muscular e alimentos em JSON (gerados dos `.js` do PWA) |
 | `tools/convert_data.py` | Gera os JSON a partir de `exercises.js`, `templates.js`, `body.js` e `foods.js` |
 

@@ -84,6 +84,7 @@ import app.ficha.logic.startOfWeek
 import app.ficha.logic.timeHM
 import app.ficha.logic.volume
 import app.ficha.ui.LocalApp
+import app.ficha.ui.components.listAd
 import app.ficha.ui.LocalOpenDetail
 import app.ficha.ui.Route
 import app.ficha.ui.components.CardBox
@@ -125,6 +126,7 @@ fun HistoryScreen(data: AppData) {
             ))
         }
         item { AchHistoryCard(data) }
+        listAd("historico")
         item { SectionHeader("Séries por músculo") }
         item { MuscleVolume(data) }
         var month = ""

@@ -1,6 +1,7 @@
 package app.ficha.ai
 
 import android.content.Context
+import app.ficha.BuildConfig
 import com.anthropic.client.okhttp.AnthropicOkHttpClient
 import com.anthropic.core.JsonValue
 import com.anthropic.errors.AnthropicIoException
@@ -39,19 +40,17 @@ import kotlin.coroutines.coroutineContext
 class AiError(message: String) : Exception(message)
 
 /**
- * Chamadas ao Claude (Anthropic) com a chave do próprio usuário, salva só neste aparelho.
+ * Chamadas ao Claude (Anthropic) pelo servidor do Ficha, só para assinantes do Ficha IA: o app manda o token da
+ * compra do Google Play, o servidor confere a assinatura e usa a chave dele (veja server/worker.js).
  * Sempre em streaming; com `fallbacks: "default"`, se o modelo recusar o pedido a API tenta de novo
  * num modelo alternativo recomendado.
  */
 object Claude {
     const val MODEL = "claude-opus-5-5"
-    private const val PREFS = "segredos"
-    private const val KEY = "anthropic_key"
 
-    fun key(context: Context): String = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY, "") ?: ""
-
-    fun setKey(context: Context, k: String) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().apply { if (k.isBlank()) remove(KEY) else putString(KEY, k.trim()) }.apply()
+    /** Apaga a chave própria das versões antigas (a IA agora vai pelo servidor). */
+    fun forgetOldKey(context: Context) {
+        context.getSharedPreferences("segredos", Context.MODE_PRIVATE).edit().remove("anthropic_key").apply()
     }
 
     /** Um pedaço de mensagem: texto ou foto (JPEG em base64). */
@@ -67,7 +66,7 @@ object Claude {
      * modelo começa a pensar. Cancelar a coroutine interrompe a conexão.
      */
     suspend fun run(
-        key: String,
+        token: String,
         system: String,
         messages: List<Msg>,
         effort: String,
@@ -77,7 +76,13 @@ object Claude {
         onText: ((String) -> Unit)? = null,
         onThinking: (() -> Unit)? = null,
     ): String = withContext(Dispatchers.IO) {
-        val client = AnthropicOkHttpClient.builder().apiKey(key).maxRetries(1).timeout(Duration.ofMinutes(10)).build()
+        if (BuildConfig.SERVER.isBlank()) throw AiError("A IA não está disponível nesta versão do app.")
+        val client = AnthropicOkHttpClient.builder()
+            .baseUrl(BuildConfig.SERVER.trimEnd('/') + "/v1/ai")
+            .authToken(token)
+            .maxRetries(1)
+            .timeout(Duration.ofMinutes(10))
+            .build()
         try {
             val out = BetaOutputConfig.builder().effort(BetaOutputConfig.Effort.of(effort))
             if (schema != null) {
@@ -146,16 +151,23 @@ object Claude {
         }
     }
 
-    /** Erros da API em mensagens para o usuário. */
-    private fun friendly(e: Exception): AiError = when (e) {
-        is UnauthorizedException -> AiError("Chave da API inválida. Confira a chave em Ajustes → Inteligência artificial.")
-        is PermissionDeniedException -> AiError("Esta chave não tem permissão para usar o modelo. Confira sua conta na Anthropic.")
-        is RateLimitException -> AiError("Limite de uso atingido. Espere um pouco e tente de novo.")
-        is BadRequestException -> AiError("A Anthropic recusou a solicitação: ${e.message}")
-        is InternalServerException -> AiError("O serviço da IA está ocupado agora. Tente de novo em instantes.")
-        is AnthropicServiceException -> AiError("Erro da IA (${e.statusCode()}): ${e.message}")
-        is AnthropicIoException -> AiError("Sem conexão com a internet (a IA precisa de internet).")
-        else -> AiError("Não foi possível usar a IA agora (${e.javaClass.simpleName}).")
+    /** Erros em mensagens para o usuário. As do servidor do Ficha (assinatura, limites) já vêm prontas. */
+    private fun friendly(e: Exception): AiError {
+        val server = (e as? AnthropicServiceException)?.let { se ->
+            runCatching {
+                se.body().asObject().get()["error"]?.asObject()?.get()?.get("message")?.asString()?.get()
+            }.getOrNull()
+        }
+        return when (e) {
+            is UnauthorizedException -> AiError(server ?: "Assine o Ficha IA para usar a inteligência artificial.")
+            is PermissionDeniedException -> AiError(server ?: "Sua assinatura Ficha IA não está ativa.")
+            is RateLimitException -> AiError(server ?: "Muitos pedidos agora. Espere um pouco e tente de novo.")
+            is BadRequestException -> AiError("A IA recusou a solicitação: ${server ?: e.message}")
+            is InternalServerException -> AiError(server ?: "O serviço da IA está ocupado agora. Tente de novo em instantes.")
+            is AnthropicServiceException -> AiError(server ?: "Erro da IA (${e.statusCode()}). Tente de novo.")
+            is AnthropicIoException -> AiError("Sem conexão com o servidor da IA. Confira a internet.")
+            else -> AiError("Não foi possível usar a IA agora (${e.javaClass.simpleName}).")
+        }
     }
 
     /** JSON do kotlinx → Map/List/valores do Java, para o JsonValue do SDK. */

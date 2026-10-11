@@ -66,7 +66,8 @@ import app.ficha.logic.relDay
 import app.ficha.logic.timeHM
 import app.ficha.ui.LocalApp
 import app.ficha.ui.Route
-import app.ficha.ui.components.AiKeySheet
+import app.ficha.ui.components.AiUpsell
+import app.ficha.billing.Billing
 import app.ficha.ui.components.CardBox
 import app.ficha.ui.components.Gutter
 import app.ficha.ui.components.Hint
@@ -92,14 +93,13 @@ fun CoachScreen(data: AppData) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val C = data.coach ?: CoachData()
-    var keySheet by remember { mutableStateOf(false) }
     var q by remember { mutableStateOf("") }
     val list = rememberLazyListState()
     val setCoach = { f: (CoachData) -> CoachData -> app.update { it.copy(coach = f(it.coach ?: CoachData())) } }
 
     fun report() {
         if (CoachRun.kind != null) return
-        val k = aiReady(context, app::toast) { keySheet = true } ?: return
+        val k = aiReady(context, app::toast) { app.go(Route.Plans) } ?: return
         CoachRun.kind = "report"
         CoachRun.job = app.scope.launch {
             try {
@@ -116,7 +116,7 @@ fun CoachScreen(data: AppData) {
     fun send(text: String) {
         val t = text.trim()
         if (t.isEmpty() || CoachRun.kind != null) return
-        val k = aiReady(context, app::toast) { keySheet = true } ?: return
+        val k = aiReady(context, app::toast) { app.go(Route.Plans) } ?: return
         q = ""
         setCoach { it.copy(chat = (it.chat + ChatMsg("u", t, System.currentTimeMillis())).takeLast(40)) }
         CoachRun.kind = "chat"
@@ -162,6 +162,9 @@ fun CoachScreen(data: AppData) {
             }
         },
     ) {
+        if (!Billing.state.ai) item {
+            AiUpsell("O treinador lê seus treinos, cargas, dieta e peso, faz o relatório da semana e responde às suas dúvidas.", Modifier.padding(horizontal = Gutter, vertical = 8.dp))
+        }
         item {
             val rep = C.report
             when {
@@ -198,10 +201,9 @@ fun CoachScreen(data: AppData) {
             }
         }
         item {
-            Hint("Usa o Claude com a sua chave da API (cobrança por uso na sua conta da Anthropic). Ao gerar ou perguntar, um resumo dos seus registros é enviado à Anthropic. Não substitui um profissional de educação física, nutricionista ou médico.")
+            Hint("Usa o Claude, da Anthropic, pelo plano Ficha IA. Ao gerar ou perguntar, um resumo dos seus registros é enviado ao servidor do Ficha e à Anthropic, só para responder. Não substitui um profissional de educação física, nutricionista ou médico.")
         }
     }
-    if (keySheet) AiKeySheet({ keySheet = false })
 }
 
 @Composable

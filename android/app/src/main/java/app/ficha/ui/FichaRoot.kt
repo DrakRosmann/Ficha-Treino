@@ -30,6 +30,8 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -109,6 +111,10 @@ import app.ficha.ui.screens.CoachScreen
 import app.ficha.ui.screens.DietScreen
 import app.ficha.ui.screens.ExerciseScreen
 import app.ficha.ui.screens.PhotosScreen
+import app.ficha.ui.screens.PlansScreen
+import app.ficha.ads.Ads
+import app.ficha.ads.AdBanner
+import app.ficha.billing.Billing
 import app.ficha.ui.screens.ExercisesScreen
 import app.ficha.ui.screens.HistoryScreen
 import app.ficha.ui.screens.ProgramScreen
@@ -166,6 +172,12 @@ fun FichaRoot() {
             // Na raiz de outra aba, voltar leva para Hoje (como nos apps do Android)
             BackHandler(enabled = backStack.size == 1 && backStack[0] != Route.Today) { app.tab(Route.Today) }
 
+            // Anúncios do plano grátis: consentimento e SDK; banner fora do treino, da câmera e do teclado
+            LaunchedEffect(Billing.state.plan) { if (!Billing.state.noAds) context.findActivity()?.let(Ads::start) }
+            LaunchedEffect(Unit) { Billing.events.collect { app.toast(it) } }
+            val now by rememberNow(60_000)
+            val banner = Ads.visible(now) && !fullScreen && top !is Route.Plans && !WindowInsets.isImeVisible
+
             val root = backStack.firstOrNull()
             val onTab = { t: Tab -> if (root == t.route && backStack.size > 1) app.replace(t.route) else app.tab(t.route) }
             Scaffold(
@@ -179,6 +191,8 @@ fun FichaRoot() {
                         enter = slideInVertically(MaterialTheme.motionScheme.defaultSpatialSpec()) { it } + fadeIn(),
                         exit = slideOutVertically(MaterialTheme.motionScheme.fastSpatialSpec()) { it } + fadeOut(),
                     ) {
+                        Column {
+                        if (banner) AdBanner()
                         ShortNavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
                             TABS.forEach { t ->
                                 val selected = root == t.route
@@ -189,6 +203,7 @@ fun FichaRoot() {
                                     label = { Text(t.label) },
                                 )
                             }
+                        }
                         }
                     }
                 },
@@ -219,7 +234,9 @@ fun FichaRoot() {
                         }
                     }
                     val side = if (rail && !fullScreen) Modifier.consumeWindowInsets(WindowInsets.systemBars.only(WindowInsetsSides.Start)) else Modifier
-                    Box(Modifier.weight(1f).fillMaxHeight().then(side)) {
+                    val wideBanner = rail && banner
+                    Column(Modifier.weight(1f).fillMaxHeight().then(side)) {
+                    Box(Modifier.weight(1f).fillMaxWidth().let { if (wideBanner) it.consumeWindowInsets(WindowInsets.navigationBars) else it }) {
                         val spatial = MaterialTheme.motionScheme.defaultSpatialSpec<IntOffset>()
                         val effects = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
                         // Entre telas de dois painéis, só esmaece: deslizar a tela toda confunde quando metade continua igual
@@ -257,12 +274,15 @@ fun FichaRoot() {
                                 screen<Route.Coach>(Pane()) { CoachScreen(data) }
                                 screen<Route.Achievements>(Pane()) { AchievementsScreen(data) }
                                 screen<Route.Cloud>(Pane()) { CloudScreen(data) }
+                                screen<Route.Plans>(Pane()) { PlansScreen() }
                             },
                         )
                         if (top !is Route.Camera) Dock(
                             data, inWorkout,
                             Modifier.align(Alignment.BottomCenter).widthIn(max = 600.dp).let { if (inWorkout || rail) it.navigationBarsPadding() else it },
                         )
+                    }
+                    if (wideBanner) AdBanner(Modifier.navigationBarsPadding())
                     }
                 }
             }

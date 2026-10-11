@@ -48,6 +48,12 @@ import app.ficha.logic.dateShort
 import app.ficha.logic.fmtRest
 import app.ficha.timer.RestNotifier
 import app.ficha.ui.LocalApp
+import app.ficha.ui.findActivity
+import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.WorkspacePremium
+import app.ficha.ads.Ads
+import app.ficha.billing.Plan
+import app.ficha.billing.Billing
 import app.ficha.ui.Route
 import app.ficha.ui.components.CardBox
 import app.ficha.ui.components.ConnectedChoice
@@ -62,14 +68,12 @@ import app.ficha.ui.theme.PALETTES
 import app.ficha.ui.theme.THEMES
 import app.ficha.ui.theme.isDarkTheme
 import app.ficha.ui.theme.schemeFromSeed
-import app.ficha.ai.Claude
 import app.ficha.logic.ACH
 import app.ficha.logic.fmt
 import app.ficha.logic.plural
 import app.ficha.photos.PhotoStore
 import app.ficha.sync.CloudSync
 import app.ficha.sync.Reminders
-import app.ficha.ui.components.AiKeySheet
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -93,7 +97,6 @@ fun SettingsScreen(data: AppData) {
     val scope = rememberCoroutineScope()
     var exportAsk by remember { mutableStateOf<String?>(null) } // save | share
     var withPhotos by remember { mutableStateOf(false) }
-    var keySheet by remember { mutableStateOf(false) }
     suspend fun backupText() = withContext(Dispatchers.IO) {
         app.store.exportJson(if (withPhotos) PhotoStore.exportData(app.data.photos.map { it.id }) else null)
     }
@@ -153,6 +156,27 @@ fun SettingsScreen(data: AppData) {
     }
 
     Screen(title = "Ajustes", back = true) {
+        item { SectionHeader("Assinatura") }
+        item {
+            val ent = Billing.state
+            SegmentedList(buildList {
+                add(Seg(
+                    headline = when (ent.plan) { Plan.Ai -> "Ficha IA"; Plan.Supporter -> "Apoiador"; Plan.Free -> "Plano grátis" },
+                    supporting = when (ent.plan) {
+                        Plan.Ai -> "Ativo · IA e sem anúncios. Obrigado!"
+                        Plan.Supporter -> "Ativo · sem anúncios. Obrigado pelo apoio!"
+                        Plan.Free -> "Com anúncios · tire os anúncios ou libere a IA"
+                    },
+                    leading = { Icon(if (ent.plan == Plan.Free) Icons.Rounded.WorkspacePremium else Icons.Rounded.Favorite, null, tint = MaterialTheme.colorScheme.primary) },
+                    onClick = { app.go(Route.Plans) }, trailing = { Icon(Icons.AutoMirrored.Rounded.ArrowForward, null) },
+                ))
+                val activity = context.findActivity()
+                if (Ads.privacyRequired && activity != null) add(Seg(
+                    headline = "Privacidade dos anúncios", supporting = "Rever o consentimento para anúncios personalizados",
+                    onClick = { Ads.privacyOptions(activity) }, trailing = { Icon(Icons.AutoMirrored.Rounded.ArrowForward, null) },
+                ))
+            })
+        }
         item { SectionHeader("Aparência") }
         item {
             CardBox {
@@ -232,14 +256,9 @@ fun SettingsScreen(data: AppData) {
 
         item { SectionHeader("Inteligência artificial") }
         item {
-            val hasKey = Claude.key(context).isNotEmpty()
             SegmentedList(listOf(
                 Seg(headline = "Montar meu treino", supporting = "Responda algumas perguntas e receba 3 opções de programa", onClick = { app.go(Route.Assistant) }, trailing = { Icon(Icons.AutoMirrored.Rounded.ArrowForward, null) }),
-                Seg(headline = "Treinador IA", supporting = "Relatório da semana e conversa sobre treino e dieta", onClick = { app.go(Route.Coach) }, trailing = { Icon(Icons.AutoMirrored.Rounded.ArrowForward, null) }),
-                Seg(
-                    headline = "Chave da API da Anthropic", supporting = if (hasKey) "Configurada · usada pelo assistente, treinador e dieta" else "Necessária para os recursos de IA (Claude)",
-                    onClick = { keySheet = true }, trailing = { Icon(Icons.AutoMirrored.Rounded.ArrowForward, null) },
-                ),
+                Seg(headline = "Treinador IA", supporting = "Relatório da semana e conversa sobre treino e dieta" + if (Billing.state.ai) "" else " · Ficha IA", onClick = { app.go(Route.Coach) }, trailing = { Icon(Icons.AutoMirrored.Rounded.ArrowForward, null) }),
                 Seg(headline = "Conquistas", supporting = "${ACH.count { data.ach?.get(it.id) != null }} de ${ACH.size} desbloqueadas", onClick = { app.go(Route.Achievements) }, trailing = { Icon(Icons.AutoMirrored.Rounded.ArrowForward, null) }),
             ))
         }
@@ -269,11 +288,10 @@ fun SettingsScreen(data: AppData) {
                 add(Seg(headline = "Apagar todos os dados", headlineColor = MaterialTheme.colorScheme.error, onClick = {
                     app.confirm(
                         "Apagar tudo?",
-                        "Fichas, histórico, dieta, medidas, fotos do progresso e exercícios personalizados serão apagados deste aparelho, e a sincronização e a chave da IA são desligadas. Isso não pode ser desfeito.",
+                        "Fichas, histórico, dieta, medidas, fotos do progresso e exercícios personalizados serão apagados deste aparelho, e a sincronização é desligada. A assinatura continua (ela fica na sua conta do Google Play). Isso não pode ser desfeito.",
                         "Apagar tudo", danger = true,
                     ) {
                         CloudSync.off()
-                        Claude.setKey(context, "")
                         PhotoStore.wipe()
                         app.store.wipe(); app.toast("Dados apagados"); app.tab(Route.Today)
                     }
@@ -299,7 +317,6 @@ fun SettingsScreen(data: AppData) {
     }
 
     if (calc) CalculatorSheet(data) { calc = false }
-    if (keySheet) AiKeySheet({ keySheet = false })
     exportAsk?.let { how ->
         val mb = PhotoStore.totalKb(data.photos) / 1024.0
         Sheet({ exportAsk = null }, "Exportar backup") {

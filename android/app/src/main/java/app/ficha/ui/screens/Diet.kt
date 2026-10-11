@@ -91,11 +91,12 @@ import app.ficha.logic.waterGoal
 import app.ficha.logic.weightSlope
 import app.ficha.logic.withDay
 import app.ficha.ui.LocalApp
+import app.ficha.ui.Route
 import app.ficha.ui.components.AiBusyDialog
-import app.ficha.ui.components.AiKeySheet
 import app.ficha.ui.components.CardBox
 import app.ficha.ui.components.Gutter
 import app.ficha.ui.components.Hint
+import app.ficha.ui.components.listAd
 import app.ficha.ui.components.KeyValue
 import app.ficha.ui.components.Screen
 import app.ficha.ui.components.SectionHeader
@@ -119,7 +120,6 @@ sealed interface DietSheet {
     data class AiText(val meal: Int) : DietSheet
     data class AiReview(val meal: Int, val res: AiMeal) : DietSheet
     data class Barcode(val meal: Int) : DietSheet
-    data object Key : DietSheet
 }
 
 fun dayLabel(t: Long): String {
@@ -145,7 +145,7 @@ fun DietScreen(data: AppData) {
 
     /** IA de refeição (texto ou foto) ou de rótulo, com o indicador enquanto roda. */
     fun runAi(meal: Int, label: Boolean, text: String?, image: String?) {
-        val k = aiReady(context, app::toast) { sheet = DietSheet.Key } ?: return
+        val k = aiReady(context, app::toast) { app.go(Route.Plans) } ?: return
         val title = if (label) "Lendo o rótulo…" else if (image != null) "Analisando a foto…" else "Calculando a refeição…"
         val job = scope.launch {
             try {
@@ -222,7 +222,7 @@ fun DietScreen(data: AppData) {
                     Icon(Icons.Rounded.Add, null); Spacer(Modifier.width(8.dp)); Text("Adicionar alimento", style = MaterialTheme.typography.titleMedium)
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilledTonalButton(onClick = { if (aiReady(context, app::toast) { sheet = DietSheet.Key } != null) sheet = DietSheet.AiText(mealNow()) }, shapes = ButtonDefaults.shapes(), modifier = Modifier.weight(1f)) {
+                    FilledTonalButton(onClick = { if (aiReady(context, app::toast) { app.go(Route.Plans) } != null) sheet = DietSheet.AiText(mealNow()) }, shapes = ButtonDefaults.shapes(), modifier = Modifier.weight(1f)) {
                         Icon(Icons.Rounded.AutoAwesome, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Descrever", maxLines = 1)
                     }
                     Box(Modifier.weight(1f)) {
@@ -288,6 +288,7 @@ fun DietScreen(data: AppData) {
             item { SectionHeader("Micronutrientes") }
             item { MicrosCard(data, key) }
         }
+        listAd("dieta")
         item { SectionHeader("Últimos 7 dias") }
         item { WeekCard(data, tg?.k) }
         item {
@@ -299,7 +300,7 @@ fun DietScreen(data: AppData) {
         is DietSheet.Add -> AddFoodSheet(
             data, s.meal, key, onDismiss = { sheet = null },
             onFood = { f -> sheet = DietSheet.Portion(f, s.meal) },
-            onAiText = { if (aiReady(context, app::toast) { sheet = DietSheet.Key } != null) sheet = DietSheet.AiText(s.meal) },
+            onAiText = { if (aiReady(context, app::toast) { app.go(Route.Plans) } != null) sheet = DietSheet.AiText(s.meal) },
             onPhoto = { label -> sheet = null; askPhoto(s.meal, label) },
             onBarcode = { sheet = DietSheet.Barcode(s.meal) },
             onCustom = { sheet = DietSheet.Custom(null, s.meal) },
@@ -310,7 +311,6 @@ fun DietScreen(data: AppData) {
         is DietSheet.AiText -> AiTextSheet(onDismiss = { sheet = null }) { txt -> sheet = null; runAi(s.meal, false, txt, null) }
         is DietSheet.AiReview -> AiReviewSheet(s.res, s.meal, key) { sheet = null }
         is DietSheet.Barcode -> BarcodeSheet(data, onDismiss = { sheet = null }, onFood = { f -> sheet = DietSheet.Portion(f, s.meal) }, onCustom = { f -> sheet = DietSheet.Custom(f, s.meal) }, onLabel = { sheet = null; askPhoto(s.meal, true) })
-        DietSheet.Key -> AiKeySheet({ sheet = null })
         null -> {}
     }
     busy?.let { (title, job) -> AiBusyDialog(title) { job.cancel(); busy = null } }

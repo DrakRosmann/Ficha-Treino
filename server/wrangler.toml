@@ -9,3 +9,11 @@ id = "COLE_AQUI_O_ID_DO_KV"
 
 [triggers]
 crons = ["*/5 * * * *"]
+
+# IA para assinantes do app Android (veja README → IA para assinantes). Os segredos ANTHROPIC_API_KEY e
+# GOOGLE_SERVICE_ACCOUNT vão por `npx wrangler secret put`, nunca neste arquivo.
+[vars]
+PLAY_PACKAGE = "app.ficha"
+AI_PRODUCT = "ficha_ia"
+AI_MONTHLY_USD = "2.5"
+AI_DAILY_LIMIT = "40"

@@ -43,6 +43,7 @@ sealed interface Route : NavKey {
     @Serializable data object Coach : Route
     @Serializable data object Achievements : Route
     @Serializable data object Cloud : Route
+    @Serializable data object Plans : Route
 }
 
 class ConfirmRequest(val title: String, val text: String, val ok: String, val danger: Boolean, val onOk: () -> Unit)
@@ -195,3 +196,13 @@ class AppController private constructor(
 }
 
 val LocalApp = staticCompositionLocalOf<AppController> { error("AppController ausente") }
+
+/** A Activity por trás de um Context da interface (compras e anúncios precisam dela). */
+fun android.content.Context.findActivity(): android.app.Activity? {
+    var c = this
+    while (c is android.content.ContextWrapper) {
+        if (c is android.app.Activity) return c
+        c = c.baseContext
+    }
+    return null
+}

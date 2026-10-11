@@ -59,8 +59,8 @@ import app.ficha.logic.letter
 import app.ficha.logic.optLabel
 import app.ficha.logic.targetUnit
 import app.ficha.ui.LocalApp
+import app.ficha.ui.Route
 import app.ficha.ui.components.AiBusyDialog
-import app.ficha.ui.components.AiKeySheet
 import app.ficha.ui.components.CardBox
 import app.ficha.ui.components.ExerciseThumb
 import app.ficha.ui.components.Gutter
@@ -91,7 +91,6 @@ fun AssistantScreen(data: AppData) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val p = data.profile ?: Profile()
-    var keySheet by remember { mutableStateOf(false) }
     var running by remember { mutableStateOf<Job?>(null) }
     var phase by remember { mutableStateOf("Preparando…") }
     var secs by remember { mutableIntStateOf(0) }
@@ -105,7 +104,7 @@ fun AssistantScreen(data: AppData) {
     }
 
     fun ai() {
-        val k = aiReady(context, app::toast) { keySheet = true } ?: return
+        val k = aiReady(context, app::toast) { app.go(Route.Plans) } ?: return
         phase = "Preparando…"
         secs = 0
         running = scope.launch {
@@ -204,12 +203,11 @@ fun AssistantScreen(data: AppData) {
                         Icon(Icons.Rounded.AutoAwesome, null); Spacer(Modifier.width(8.dp)); Text("Montar com IA (Claude)")
                     }
                 }
-                Hint("“Ver opções” usa regras de treino, funciona sem internet e é grátis. “Montar com IA” usa o Claude, entende as suas observações em texto livre e precisa de internet e de uma chave da API da Anthropic (paga por uso).")
+                Hint("“Ver opções” usa regras de treino, funciona sem internet e é grátis. “Montar com IA” usa o Claude, entende as suas observações em texto livre e faz parte do plano Ficha IA (precisa de internet).")
                 Hint(DISCLAIMER)
             }
         }
     }
-    if (keySheet) AiKeySheet({ keySheet = false }) { ai() }
     running?.let { job -> AiBusyDialog("Montando seu treino com IA", "$phase\n$secs s") { job.cancel(); running = null } }
     use?.let { op -> UseProgramSheet(data, op.programName, op.sessions) { use = null } }
     howTo?.let { HowToSheet(data, it, { howTo = null }) }

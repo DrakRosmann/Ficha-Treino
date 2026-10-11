@@ -5,8 +5,13 @@
  * Lembretes: guarda a inscrição de notificação de cada aparelho e os horários; um gatilho (cron)
  * a cada 5 minutos envia os lembretes na hora certa, no fuso de cada aparelho (Web Push com VAPID).
  *
+ * IA para assinantes (app Android): repassa os pedidos do app à API da Anthropic com a chave do servidor,
+ * depois de conferir no Google Play que a assinatura Ficha IA está ativa. Cada assinante tem um limite de
+ * gasto por mês e de pedidos por dia (veja server/README.md → IA para assinantes).
+ *
  * Precisa de: um KV namespace ligado com o nome FICHA e um Cron Trigger a cada 5 minutos (veja server/README.md).
  * Variáveis opcionais: ALLOW_ORIGIN (ex.: https://drakrosmann.github.io) e VAPID_SUBJECT (mailto: ou https:).
+ * IA: ANTHROPIC_API_KEY e GOOGLE_SERVICE_ACCOUNT (segredos), PLAY_PACKAGE, AI_PRODUCT, AI_MONTHLY_USD, AI_DAILY_LIMIT.
  */
 
 const MAX_DATA = 8 * 1024 * 1024;
@@ -44,7 +49,8 @@ async function body(req, max = 256 * 1024) {
 async function route(req, env, ctx, json) {
   const url = new URL(req.url), p = url.pathname.replace(/\/+$/, ''), m = req.method;
   if (!env.FICHA) fail(500, 'no_kv', 'Ligue um KV namespace com o nome FICHA ao Worker');
-  if (p === '/v1/ping' || p === '' || p === '/') return json({ ok: true, app: 'ficha', v: 1, push: true });
+  if (p === '/v1/ping' || p === '' || p === '/') return json({ ok: true, app: 'ficha', v: 1, push: true, ai: !!env.ANTHROPIC_API_KEY });
+  if (p.startsWith('/v1/ai/')) return aiRoute(req, env, ctx, url, p, json);
 
   // ===== Sincronização =====
   let r = p.match(/^\/v1\/data\/([a-f0-9]{64})$/);
@@ -222,4 +228,195 @@ async function sendPush(env, sub, msg) {
   } catch (e) {
     return { ok: false, status: 0, gone: false };
   }
+}
+
+/* ===== IA para assinantes =====
+ * O app usa o SDK da Anthropic com `<servidor>/v1/ai` como endereço base e o token da compra do Google Play como
+ * Bearer. Aqui: confere a assinatura, aplica os limites, troca o token pela chave do servidor e devolve a resposta
+ * (em streaming) como veio. Os erros seguem o formato da Anthropic, para o SDK do app entender.
+ */
+const AI_FIELDS = ['model', 'max_tokens', 'system', 'messages', 'stream', 'output_config', 'cache_control', 'fallbacks', 'thinking', 'metadata'];
+const PLAY_OK = ['SUBSCRIPTION_STATE_ACTIVE', 'SUBSCRIPTION_STATE_IN_GRACE_PERIOD', 'SUBSCRIPTION_STATE_CANCELED'];
+
+function aiError(status, type, message) {
+  return new Response(JSON.stringify({ type: 'error', error: { type, message } }), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
+}
+class AiStop extends Error { constructor(res) { super('ai'); this.res = res; } }
+const aiStop = (status, type, message) => { throw new AiStop(aiError(status, type, message)); };
+const num = (v, d) => (v != null && v !== '' && isFinite(+v) ? +v : d);
+
+async function aiRoute(req, env, ctx, url, p, json) {
+  try {
+    if (!env.ANTHROPIC_API_KEY) aiStop(503, 'api_error', 'A IA ainda não foi configurada no servidor.');
+    const who = await aiAuth(req, env);
+    if (p === '/v1/ai/usage' && req.method === 'GET') {
+      const u = await aiUsage(env, who.id);
+      return json({ used: u.cost / u.budget, today: u.today, dayLimit: u.dayLimit, month: u.month, until: who.until });
+    }
+    if (p === '/v1/ai/v1/messages' && req.method === 'POST') return await aiMessages(req, env, ctx, url, who);
+    aiStop(404, 'not_found_error', 'Rota da IA desconhecida.');
+  } catch (e) {
+    if (e instanceof AiStop) return e.res;
+    return aiError(500, 'api_error', 'Erro no servidor da IA: ' + e.message);
+  }
+}
+
+// Assinatura: token da compra → Google Play (com cache de 30 min se ativa, 5 min se não)
+async function aiAuth(req, env) {
+  const tok = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '').trim();
+  if (!tok || tok.length > 4096) aiStop(401, 'authentication_error', 'Assine o Ficha IA para usar a inteligência artificial.');
+  const id = (await sha256hex('ficha-play:' + tok)).slice(0, 40);
+  const dev = (env.DEV_TOKENS || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (dev.includes(tok)) return { id, until: Date.now() + 30 * 864e5 };
+  const ck = 'p:' + id, now = Date.now();
+  let c = await env.FICHA.get(ck, 'json');
+  if (!c || now - c.at > (c.ok ? 30 : 5) * 60e3 || (c.ok && c.until < now)) {
+    c = { ...(await playSubscription(env, tok)), at: now };
+    await env.FICHA.put(ck, JSON.stringify(c), { expirationTtl: 86400 });
+  }
+  if (!c.ok || c.until < now) aiStop(403, 'permission_error', 'Sua assinatura Ficha IA não está ativa. Confira em Ajustes → Assinatura.');
+  return { id, until: c.until };
+}
+
+async function playSubscription(env, token) {
+  const pkg = env.PLAY_PACKAGE || 'app.ficha', product = env.AI_PRODUCT || 'ficha_ia';
+  const base = env.PLAY_API_BASE || 'https://androidpublisher.googleapis.com';
+  const res = await fetch(`${base}/androidpublisher/v3/applications/${pkg}/purchases/subscriptionsv2/tokens/${encodeURIComponent(token)}`, {
+    headers: { Authorization: 'Bearer ' + await googleToken(env) }
+  });
+  if (res.status === 400 || res.status === 404 || res.status === 410) return { ok: false, until: 0 };
+  if (!res.ok) aiStop(503, 'api_error', 'Não foi possível conferir a assinatura agora. Tente de novo em instantes.');
+  const s = await res.json();
+  const until = Math.max(0, ...(s.lineItems || []).filter(i => i.productId === product).map(i => Date.parse(i.expiryTime) || 0));
+  return { ok: PLAY_OK.includes(s.subscriptionState) && until > Date.now(), until };
+}
+
+// Token de acesso do Google (conta de serviço, JWT RS256) — vale 1 h, guardado na memória do Worker
+let googleMem = null;
+async function googleToken(env) {
+  if (googleMem && googleMem.exp > Date.now() + 60e3) return googleMem.t;
+  let sa;
+  try { sa = JSON.parse(env.GOOGLE_SERVICE_ACCOUNT || ''); } catch (e) { sa = null; }
+  if (!sa || !sa.private_key || !sa.client_email) aiStop(503, 'api_error', 'O servidor ainda não está ligado ao Google Play (GOOGLE_SERVICE_ACCOUNT).');
+  const aud = sa.token_uri || 'https://oauth2.googleapis.com/token', now = Math.floor(Date.now() / 1000);
+  const head = b64u(enc.encode(JSON.stringify({ alg: 'RS256', typ: 'JWT' })));
+  const claims = b64u(enc.encode(JSON.stringify({ iss: sa.client_email, scope: 'https://www.googleapis.com/auth/androidpublisher', aud, iat: now, exp: now + 3600 })));
+  const der = Uint8Array.from(atob(sa.private_key.replace(/-----[^-]+-----/g, '').replace(/\s+/g, '')), c => c.charCodeAt(0));
+  const key = await crypto.subtle.importKey('pkcs8', der, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['sign']);
+  const sig = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', key, enc.encode(`${head}.${claims}`));
+  const res = await fetch(aud, {
+    method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: 'grant_type=' + encodeURIComponent('urn:ietf:params:oauth:grant-type:jwt-bearer') + '&assertion=' + `${head}.${claims}.${b64u(sig)}`
+  });
+  if (!res.ok) aiStop(503, 'api_error', 'Não foi possível conferir a assinatura agora (Google).');
+  const j = await res.json();
+  googleMem = { t: j.access_token, exp: Date.now() + (j.expires_in || 3600) * 1000 };
+  return googleMem.t;
+}
+
+// Limites: gasto no mês (US$, pelos tokens usados) e pedidos no dia (UTC)
+async function aiUsage(env, id) {
+  const d = new Date().toISOString(), month = d.slice(0, 7), day = d.slice(0, 10);
+  const [cost, today] = await Promise.all([env.FICHA.get(`u:${id}:${month}`), env.FICHA.get(`n:${id}:${day}`)]);
+  return { month, day, cost: num(cost, 0), today: num(today, 0), budget: num(env.AI_MONTHLY_USD, 2.5), dayLimit: num(env.AI_DAILY_LIMIT, 40) };
+}
+
+async function aiMessages(req, env, ctx, url, who) {
+  const u = await aiUsage(env, who.id);
+  const nextMonth = new Date(Date.UTC(+u.month.slice(0, 4), +u.month.slice(5, 7), 1)).toLocaleDateString('pt-BR', { timeZone: 'UTC' });
+  if (u.cost >= u.budget) aiStop(429, 'rate_limit_error', `Você usou todo o limite de IA deste mês. Ele renova em ${nextMonth}.`);
+  if (u.today >= u.dayLimit) aiStop(429, 'rate_limit_error', 'Você atingiu o limite de pedidos à IA de hoje. Amanhã ele renova.');
+
+  const text = await req.text();
+  if (text.length > 15 * 1024 * 1024) aiStop(413, 'request_too_large', 'Pedido grande demais.');
+  let b;
+  try { b = JSON.parse(text); } catch (e) { aiStop(400, 'invalid_request_error', 'JSON inválido.'); }
+  const body = {};
+  for (const k of AI_FIELDS) if (k in b) body[k] = b[k];
+  if (!Array.isArray(body.messages) || !body.messages.length || body.messages.length > 80) aiStop(400, 'invalid_request_error', 'Mensagens inválidas.');
+  body.model = env.AI_MODEL || 'claude-opus-5-5';
+  body.max_tokens = Math.max(1, Math.min(num(b.max_tokens, 4096), num(env.AI_MAX_TOKENS, 32000)));
+
+  const betasOk = (env.AI_BETAS || 'server-side-fallback-2026-07-01').split(',').map(s => s.trim());
+  const betas = (req.headers.get('anthropic-beta') || '').split(',').map(s => s.trim()).filter(x => betasOk.includes(x));
+  const headers = { 'Content-Type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' };
+  if (betas.length) headers['anthropic-beta'] = betas.join(',');
+  await env.FICHA.put(`n:${who.id}:${u.day}`, String(u.today + 1), { expirationTtl: 3 * 86400 });
+
+  const up = await fetch((env.ANTHROPIC_BASE || 'https://api.anthropic.com') + '/v1/messages' + (url.searchParams.get('beta') ? '?beta=true' : ''), {
+    method: 'POST', headers, body: JSON.stringify(body)
+  });
+  // Chave do servidor inválida ou sem permissão: não é culpa do usuário
+  if (up.status === 401 || up.status === 403) aiStop(502, 'api_error', 'O servidor da IA está com um problema de configuração. Tente mais tarde.');
+  const outHeaders = { 'Content-Type': up.headers.get('Content-Type') || 'application/json', 'Cache-Control': 'no-store' };
+  const rid = up.headers.get('request-id');
+  if (rid) outHeaders['request-id'] = rid;
+  if (!up.ok || !up.body) return new Response(up.body, { status: up.status, headers: outHeaders });
+
+  // Passa a resposta adiante pedaço por pedaço e soma os tokens usados (se o app cancelar, cancela na Anthropic também)
+  const meter = usageMeter();
+  let done;
+  const finished = new Promise(r => (done = r));
+  ctx.waitUntil(finished.then(() => aiCharge(env, who.id, u.month, meter.cost(env))));
+  const reader = up.body.getReader();
+  const stream = new ReadableStream({
+    async pull(ctrl) {
+      try {
+        const { done: end, value } = await reader.read();
+        if (end) { meter.end(); ctrl.close(); done(); return; }
+        meter.feed(value);
+        ctrl.enqueue(value);
+      } catch (e) { ctrl.error(e); done(); }
+    },
+    cancel(reason) { reader.cancel(reason).catch(() => {}); done(); }
+  });
+  return new Response(stream, { status: up.status, headers: outHeaders });
+}
+
+// Lê os eventos (SSE ou JSON) e guarda o maior valor de cada contador de tokens visto
+export function usageMeter() {
+  const dec = new TextDecoder(), u = { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 };
+  let buf = '', chars = 0, sawOut = false;
+  // O total de saída só vem no fim (message_delta, ou na resposta JSON); o do message_start é provisório
+  const take = (o, final) => {
+    if (!o || typeof o !== 'object') return;
+    for (const k of Object.keys(u)) if (typeof o[k] === 'number') u[k] = Math.max(u[k], o[k]);
+    if (final && typeof o.output_tokens === 'number') sawOut = true;
+  };
+  const line = l => {
+    l = l.trim();
+    if (l.startsWith('data:')) l = l.slice(5).trim();
+    if (!l.startsWith('{')) return;
+    try {
+      const ev = JSON.parse(l);
+      take(ev.usage, true); take(ev.message && ev.message.usage, false);
+      const d = ev.delta;
+      if (d && typeof d.text === 'string') chars += d.text.length;
+      if (d && typeof d.thinking === 'string') chars += d.thinking.length;
+    } catch (e) { /* pedaço incompleto */ }
+  };
+  return {
+    feed(chunk) {
+      buf += dec.decode(chunk, { stream: true });
+      const parts = buf.split('\n');
+      buf = parts.pop();
+      if (buf.length > 4 * 1024 * 1024) buf = ''; // resposta sem quebras de linha (JSON) muito grande
+      parts.forEach(line);
+    },
+    end() { buf += dec.decode(); line(buf); buf = ''; },
+    usage: () => ({ ...u }),
+    cost(env) {
+      const pin = num(env.AI_PRICE_IN, 4), pout = num(env.AI_PRICE_OUT, 20), pread = num(env.AI_PRICE_CACHE_READ, 0.2);
+      // Cancelado no meio: o total de saída ainda não veio, estima pelo texto recebido (~3 caracteres por token)
+      const out = sawOut ? u.output_tokens : Math.ceil(chars / 3);
+      return (u.input_tokens * pin + u.cache_creation_input_tokens * pin * 1.25 + u.cache_read_input_tokens * pread + out * pout) / 1e6;
+    }
+  };
+}
+
+async function aiCharge(env, id, month, cost) {
+  if (!(cost > 0)) return;
+  const k = `u:${id}:${month}`;
+  const cur = num(await env.FICHA.get(k), 0);
+  await env.FICHA.put(k, String(cur + cost), { expirationTtl: 62 * 86400 });
 }

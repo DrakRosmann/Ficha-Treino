@@ -4,6 +4,9 @@ import android.app.Application
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
+import app.ficha.ads.Ads
+import app.ficha.ai.Claude
+import app.ficha.billing.Billing
 import app.ficha.data.Catalog
 import app.ficha.data.Foods
 import app.ficha.data.Store
@@ -22,6 +25,9 @@ class FichaApp : Application() {
         RestNotifier.createChannels(this)
         Reminders.createChannel(this)
         CloudSync.init(this, store)
+        Billing.init(this)
+        Ads.init(this)
+        Claude.forgetOldKey(this)
         Reminders.reschedule(this)
         // Ao minimizar ou fechar o app, grava os dados na hora (e envia para a nuvem)
         ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
@@ -31,7 +37,10 @@ class FichaApp : Application() {
                 Reminders.reschedule(this@FichaApp)
             }
 
-            override fun onStart(owner: LifecycleOwner) = CloudSync.onForeground()
+            override fun onStart(owner: LifecycleOwner) {
+                CloudSync.onForeground()
+                Billing.refresh()
+            }
         })
     }
 

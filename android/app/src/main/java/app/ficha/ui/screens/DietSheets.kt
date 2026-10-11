@@ -467,7 +467,7 @@ fun AiTextSheet(onDismiss: () -> Unit, onRun: (String) -> Unit) {
                 modifier = Modifier.fillMaxWidth(),
             )
             Text(
-                "A IA identifica cada alimento e estima as quantidades e os macros. Você confere antes de salvar. Usa a sua chave da Anthropic.",
+                "A IA identifica cada alimento e estima as quantidades e os macros. Você confere antes de salvar. Faz parte do plano Ficha IA.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Button(onClick = { if (t.trim().length < 3) app.toast("Descreva o que você comeu") else onRun(t.trim()) }, shapes = ButtonDefaults.shapes(), modifier = Modifier.fillMaxWidth()) {
